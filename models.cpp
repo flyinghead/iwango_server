@@ -1,0 +1,237 @@
+#include "models.h"
+#include "lobby_server.h"
+
+void Lobby::addPlayer(std::shared_ptr<Player> player)
+{
+	members.push_back(player);
+
+	// Confirm Join Lobby
+	player->send(0x13, name + " " + player->name);
+
+	// Send player info to all members
+	for (auto& p : members)
+	{
+		if (p == player)
+			continue;
+		p->send(0x30, player->getSendDataPacket());
+	}
+}
+
+void Lobby::removePlayer(std::shared_ptr<Player> player)
+{
+	for (auto it = members.begin(); it != members.end(); ++it)
+	{
+		if ((*it) == player)
+		{
+			// Remove player from list
+			members.erase(it);
+
+			// Confirm Leave Lobby
+			player->send(0xCB);
+
+			// Tell all members to remove the player
+			for (auto& p : members)
+				p->send(0x2C, player->name);
+			return;
+		}
+	}
+	fprintf(stderr, "Player %s not found in lobby %s\n", player->name.c_str(), name.c_str());
+}
+
+void Lobby::sendChat(const std::string& from, const std::string& message) {
+	for (auto& player : members)
+		player->send(0x2D, from + " " + message);
+}
+
+std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const std::string& name, unsigned capacity, const std::string& type)
+{
+	Team::Ptr team = Team::create(shared_from_this(), name, capacity, creator);
+	teams.push_back(team);
+	creator->team = team;
+
+	for (auto& p : members)
+		p->send(0x28, name + " " + creator->name + " " + std::to_string(capacity) + " 0 " + game.name);
+
+	return team;
+}
+void Lobby::deleteTeam(std::shared_ptr<Team> team)
+{
+	for (auto it = teams.begin(); it != teams.end(); ++it)
+	{
+		if ((*it) == team)
+		{
+			teams.erase(it);
+			break;
+		}
+	}
+	// Tell all members to remove team
+	for (auto& p : members)
+		p->send(0x3A, team->name);
+}
+
+std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
+{
+	for (auto& team : teams)
+		if (team->name == name)
+			return team;
+	return nullptr;
+}
+
+std::string Player::getIp() {
+	return connection->getSocket().remote_endpoint().address().to_string();
+}
+uint32_t Player::getIpUint32() {
+	return connection->getSocket().remote_endpoint().address().to_v4().to_ulong();
+}
+std::array<uint8_t, 4> Player::getIpBytes() {
+	return connection->getSocket().remote_endpoint().address().to_v4().to_bytes();
+}
+uint16_t Player::getPort() {
+	return connection->getSocket().remote_endpoint().port();
+}
+
+void Player::disconnect(bool sendDCPacket)
+{
+	if (disconnected)
+		return;
+	disconnected = true;
+
+	// Tell client to d/c if actually still connected
+	if (sendDCPacket)
+		send(0x17);
+
+	// Remove player from everything
+	if (team) {
+		team->removePlayer(shared_from_this());
+		team.reset();
+	}
+	if (lobby) {
+		lobby->removePlayer(shared_from_this());
+		lobby.reset();
+	}
+	Server::instance().removePlayer(shared_from_this());
+
+	// Close if need be
+	connection->close();
+	connection.reset();
+}
+
+void Player::setSharedMem(const std::vector<uint8_t>& data)
+{
+	if (data.size() != 0x1e)
+		// TODO log
+		return;
+	memcpy(sharedMem.data(), &data[0], data.size());
+	if (team)
+		team->sendSharedMemPlayer(shared_from_this(), sharedMem);
+}
+
+std::vector<uint8_t> Player::getSendDataPacket()
+{
+	std::string strData;
+	if (lobby)
+		strData += lobby->name + " ";
+	else
+		strData += "# ";
+	if (team && team->host == shared_from_this())
+		strData += "*";
+	strData += name + " " + std::to_string(flags) + " ";
+	if (team)
+		strData += "*" + team->name + " ";
+	else
+		strData += "# ";
+	if (game != nullptr)
+		strData += "*" + game->name;
+	else
+		strData += "#";
+	//= $"{(CurrentLobby != null ? CurrentLobby.Name : "#")} {(CurrentTeam != null && CurrentTeam.Host.Equals(this) ? "*" : "")}{Name} {Flags} {(CurrentTeam != null ? "*" + CurrentTeam.Name : "#")} {(CurrentGame != null ? "*" + CurrentGame.Name : "#")}";
+
+	std::vector<uint8_t> data(1 + strData.length() + 1 + sharedMem.size() + 4);
+	size_t idx = 0;
+	data[idx++] = strData.length();
+	memcpy(&data[idx], &strData[0], strData.length());
+	idx += strData.length();
+	data[idx++] = 1;
+	memcpy(&data[idx], &sharedMem[0], sharedMem.size());
+	idx += sharedMem.size();
+	memcpy(&data[idx], getIpBytes().data(), 4);
+
+	return data;
+}
+
+void Player::createTeam(const std::string& name, unsigned capacity, const std::string& type)
+{
+	if (lobby != nullptr)
+	{
+		if (lobby->getTeam(name) == nullptr)
+		{
+			Team::Ptr newTeam = lobby->createTeam(shared_from_this(), name, capacity, type);
+			team = newTeam;
+			return;
+		}
+	}
+	send(0x03); // Name already in use
+}
+void Player::joinTeam(const std::string& name)
+{
+	if (lobby != nullptr)
+	{
+		Team::Ptr team = lobby->getTeam(name);
+		if (team == nullptr)
+			return; // Some Error, team didn't exist
+
+		if (team->addPlayer(shared_from_this()))
+			this->team = team;
+	}
+	else {
+		// TODO Some Error
+	}
+}
+void Player::leaveTeam()
+{
+	if (lobby != nullptr && team != nullptr) {
+		team->removePlayer(shared_from_this());
+		this->team = nullptr;
+	}
+	else {
+		// TODO Some Error
+	}
+}
+
+void Player::sendExtraMem(const uint8_t* extraMem, int offset, int length)
+{
+	std::vector<uint8_t> payload(length - offset + 2);
+	*(uint16_t *)&payload[0] = (uint16_t)length;
+	memcpy(&payload[2], extraMem + offset, length);
+
+	send(0x50);
+	send(0x51, payload);
+	send(0x52);
+}
+
+int Player::send(uint16_t opcode, const uint8_t *payload, unsigned length)
+{
+	std::vector<uint8_t> data = makePacket(opcode, payload, length);
+	connection->send(data);
+	return data.size();
+}
+
+std::vector<uint8_t> Player::makePacket(uint16_t opcode, const uint8_t *payload, unsigned length)
+{
+	unsigned size = length + 2;
+	std::vector<uint8_t> data(size + 2);
+	// Size
+	data[0] = size;
+	data[1] = size >> 8;
+	// Opcode
+	data[2] = opcode;
+	data[3] = opcode >> 8;
+	// Payload
+	memcpy(&data[4], payload, length);
+	return data;
+}
+
+void Player::receive(uint16_t opcode, const std::vector<uint8_t> payload)
+{
+	PacketProcessor::handlePacket(shared_from_this(), opcode, payload);
+}
