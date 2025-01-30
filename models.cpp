@@ -49,8 +49,10 @@ std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const s
 	teams.push_back(team);
 	creator->team = team;
 
+	sstream ss;
+	ss << name << ' ' << creator->name << ' ' << capacity << " 0 " << game.name;
 	for (auto& p : members)
-		p->send(0x28, name + " " + creator->name + " " + std::to_string(capacity) + " 0 " + game.name);
+		p->send(0x28, ss.str());
 
 	return team;
 }
@@ -58,8 +60,7 @@ void Lobby::deleteTeam(std::shared_ptr<Team> team)
 {
 	for (auto it = teams.begin(); it != teams.end(); ++it)
 	{
-		if ((*it) == team)
-		{
+		if ((*it) == team) {
 			teams.erase(it);
 			break;
 		}
@@ -77,17 +78,33 @@ std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
 	return nullptr;
 }
 
-std::string Player::getIp() {
-	return connection->getSocket().remote_endpoint().address().to_string();
+std::string Player::getIp()
+{
+	if (connection == nullptr)
+		return "0.0.0.0";
+	else
+		return connection->getSocket().remote_endpoint().address().to_string();
 }
-uint32_t Player::getIpUint32() {
-	return connection->getSocket().remote_endpoint().address().to_v4().to_ulong();
+uint32_t Player::getIpUint32()
+{
+	if (connection == nullptr)
+		return 0;
+	else
+		return connection->getSocket().remote_endpoint().address().to_v4().to_ulong();
 }
-std::array<uint8_t, 4> Player::getIpBytes() {
-	return connection->getSocket().remote_endpoint().address().to_v4().to_bytes();
+std::array<uint8_t, 4> Player::getIpBytes()
+{
+	if (connection == nullptr)
+		return {};
+	else
+		return connection->getSocket().remote_endpoint().address().to_v4().to_bytes();
 }
-uint16_t Player::getPort() {
-	return connection->getSocket().remote_endpoint().port();
+uint16_t Player::getPort()
+{
+	if (connection == nullptr)
+		return 0;
+	else
+		return connection->getSocket().remote_endpoint().port();
 }
 
 void Player::disconnect(bool sendDCPacket)
@@ -112,8 +129,9 @@ void Player::disconnect(bool sendDCPacket)
 	Server::instance().removePlayer(shared_from_this());
 
 	// Close if need be
-	connection->close();
-	connection.reset();
+	if (connection)
+		connection->close();
+		// this might have been deleted at this point
 }
 
 void Player::setSharedMem(const std::vector<uint8_t>& data)
@@ -128,23 +146,23 @@ void Player::setSharedMem(const std::vector<uint8_t>& data)
 
 std::vector<uint8_t> Player::getSendDataPacket()
 {
-	std::string strData;
+	sstream ss;
 	if (lobby)
-		strData += lobby->name + " ";
+		ss << lobby->name << ' ';
 	else
-		strData += "# ";
+		ss << "# ";
 	if (team && team->host == shared_from_this())
-		strData += "*";
-	strData += name + " " + std::to_string(flags) + " ";
+		ss << '*';
+	ss << name << ' ' << flags << ' ';
 	if (team)
-		strData += "*" + team->name + " ";
+		ss << '*' << team->name << ' ';
 	else
-		strData += "# ";
+		ss << "# ";
 	if (game != nullptr)
-		strData += "*" + game->name;
+		ss << '*' << game->name;
 	else
-		strData += "#";
-	//= $"{(CurrentLobby != null ? CurrentLobby.Name : "#")} {(CurrentTeam != null && CurrentTeam.Host.Equals(this) ? "*" : "")}{Name} {Flags} {(CurrentTeam != null ? "*" + CurrentTeam.Name : "#")} {(CurrentGame != null ? "*" + CurrentGame.Name : "#")}";
+		ss << '#';
+	std::string strData = ss.str();
 
 	std::vector<uint8_t> data(1 + strData.length() + 1 + sharedMem.size() + 4);
 	size_t idx = 0;
@@ -211,6 +229,10 @@ void Player::sendExtraMem(const uint8_t* extraMem, int offset, int length)
 
 int Player::send(uint16_t opcode, const uint8_t *payload, unsigned length)
 {
+	if (connection == nullptr) {
+		fprintf(stderr, "WARNING: player %s has a null connection\n", name.c_str());
+		return 0;
+	}
 	std::vector<uint8_t> data = makePacket(opcode, payload, length);
 	connection->send(data);
 	return data.size();

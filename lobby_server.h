@@ -55,22 +55,7 @@ private:
 					asio::placeholders::error,
 					asio::placeholders::bytes_transferred));
 	}
-	void onSent(const std::error_code& ec, size_t len)
-	{
-		if (ec)
-		{
-			fprintf(stderr, "ERROR: onSent: %s\n", ec.message().c_str());
-			// TODO remove from list of server's clients
-			return;
-		}
-		sending = false;
-		assert(len <= sendIdx);
-		sendIdx -= len;
-		if (sendIdx != 0) {
-			memmove(&sendBuffer[0], &sendBuffer[len], sendIdx);
-			send();
-		}
-	}
+	void onSent(const std::error_code& ec, size_t len);
 
 	using iterator = asio::buffers_iterator<asio::const_buffers_1>;
 

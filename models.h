@@ -5,6 +5,12 @@
 #include <vector>
 #include <cstring>
 #include <array>
+#include <sstream>
+
+using sstream = std::stringstream;
+class Player;
+class Team;
+class LobbyConnection;
 
 class Packet
 {
@@ -29,11 +35,6 @@ public:
 	std::string name;
 	int unknown = 0;
 };
-
-class Lobby;
-class Player;
-class Team;
-class LobbyConnection;
 
 class Lobby : public SharedThis<Lobby>
 {
@@ -143,14 +144,14 @@ public:
 		members.push_back(player);
 
 		// Build player string
-		std::string players = "";
+		sstream ss;
+		ss << name;
 		for (auto& p : members)
-			players += " " + p->name;
-		players = players.substr(1);
+			ss << ' ' << p->name;
 
 		// Send packet to all members
 		for (auto& p : player->lobby->members)
-			p->send(0x29, name + " " + players);
+			p->send(0x29, ss.str());
 
 		return true;
 	}
@@ -197,11 +198,11 @@ public:
 
 	void launchGame(Player::Ptr p)
 	{
-		std::string data = std::to_string(members.size());
-		for (auto& player : members) {
-			data += " " + std::string(host == player ? "*" : "") + player->name + " " + player->getIp();
-		}
-		p->send(0x3e, data);
+		sstream ss;
+		ss << members.size();
+		for (auto& player : members)
+			ss << ' ' << (host == player ? "*" : "") << player->name << ' ' << player->getIp();
+		p->send(0x3e, ss.str());
 	}
 
 	std::string name;
@@ -248,6 +249,7 @@ public:
 		}
 		return nullptr;
 	}
+	/*
 	void deleteLobby(std::string name)
 	{
 		for (auto it = lobbies.begin(); it != lobbies.end(); ++it) {
@@ -257,6 +259,7 @@ public:
 			}
 		}
 	}
+	*/
 	Lobby::Ptr getLobby(const std::string& name)
 	{
 		for (auto& lobby : lobbies)

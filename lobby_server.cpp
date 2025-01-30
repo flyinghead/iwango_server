@@ -12,13 +12,8 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 			fprintf(stderr, "ERROR: onReceive: %s\n", ec.message().c_str());
 		else
 			printf("Connection closed\n");
-		// TODO remove from list of server's clients
-		return;
-	}
-	if (len >= 0xffff)
-	{
-		// FIXME Something is going wrong, buffer full, gtfo.
-		fprintf(stderr, "ERROR: buffer overflow\n");
+		if (player)
+			player->disconnect(false);
 		return;
 	}
 	// Grab data and process if correct.
@@ -27,9 +22,27 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 	//uint16_t unk2 = *(uint16_t *)&recvBuffer[6];
 	uint16_t opcode = *(uint16_t *)&recvBuffer[8];
 	std::vector<uint8_t> payload(&recvBuffer[10], &recvBuffer[len]);
-	printf("Request[%d]: %04x [%s]\n", sequence, opcode, std::string((char *)&payload[0], payload.size()).c_str());
+	printf("lobby: Request[%d]: %04x [%s]\n", sequence, opcode, std::string((char *)&payload[0], payload.size()).c_str());
 	player->receive(opcode, payload);
 	receive();
+}
+
+void LobbyConnection::onSent(const std::error_code& ec, size_t len)
+{
+	if (ec)
+	{
+		fprintf(stderr, "ERROR: onSent: %s\n", ec.message().c_str());
+		if (player)
+			player->disconnect(false);
+		return;
+	}
+	sending = false;
+	assert(len <= sendIdx);
+	sendIdx -= len;
+	if (sendIdx != 0) {
+		memmove(&sendBuffer[0], &sendBuffer[len], sendIdx);
+		send();
+	}
 }
 
 class LobbyServer : public SharedThis<LobbyServer>
@@ -41,15 +54,6 @@ public:
 
 		acceptor.async_accept(newConnection->getSocket(),
 				std::bind(&LobbyServer::handleAccept, shared_from_this(), newConnection, asio::placeholders::error));
-	}
-
-	void sendAll(const std::vector<uint8_t>& data)
-	{
-		for (auto& client : clients) {
-			LobbyConnection::Ptr ptr = client.lock();
-			if (ptr)
-				ptr->send(data);
-		}
 	}
 
 private:
@@ -67,7 +71,6 @@ private:
 		if (!error)
 		{
 			printf("New connection from %s\n", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
-			clients.emplace_back(newConnection);	// TODO need to remove closed clients
 			Player::Ptr player = Player::create(newConnection);
 			newConnection->setPlayer(player);
 			Server::instance().addPlayer(player);
@@ -78,7 +81,6 @@ private:
 
 	asio::io_context& io_context;
 	asio::ip::tcp::acceptor acceptor;
-	std::vector<std::weak_ptr<LobbyConnection>> clients;
 
 	friend super;
 };

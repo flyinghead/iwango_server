@@ -1,13 +1,13 @@
 #include "vms.h"
+#include "sega_crypto.h"
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <string>
 #include <array>
 #include <vector>
 #include <cassert>
 #include <cstring>
-
-static const char *KEY_FILENAME = "DAYTKEY_";
 
 static uint8_t P_TABLE[] =
 {
@@ -278,232 +278,159 @@ static uint8_t S_TABLE[] =
 	0x32, 0x61, 0x4e, 0xb7, 0x5b, 0xe2, 0x77, 0xce, 0xe3, 0xdf, 0x8f, 0x57, 0xe6, 0x72, 0xc3, 0x3a
 };
 
-class SegaCrypto
+//8C06C6AC
+SegaCrypto::SegaCrypto(const std::string& key)
 {
-	std::array<uint32_t, 18> P;
-	std::array<std::array<uint32_t, 256>, 4> S;
+	uint32_t shifted = 0;
+	int keyIndex = 0;
 
-public:
-	SegaCrypto() : SegaCrypto("iloveosamu27") {
+	// Copy starting values
+	memcpy(P.data(), P_TABLE, sizeof(P_TABLE));
+	memcpy(S.data(), S_TABLE, sizeof(S_TABLE));
+
+	// Initialize P & S
+	for (unsigned i = 0; i < P.size(); i++)
+	{
+		for (int j = 0; j < 4; j++) {
+			shifted = (shifted << 8) | key[keyIndex];
+			keyIndex = (keyIndex + 1) % key.size();
+		}
+		P[i] ^= shifted;
 	}
 
-	//8C06C6AC
-	SegaCrypto(const std::string& key)
+	// Expand Key
+	uint32_t l = 0, r = 0;
+	for (int i = 0; i < 18; i+=2)
 	{
-		uint32_t shifted = 0;
-		int keyIndex = 0;
-
-		// Copy starting values
-		memcpy(P.data(), P_TABLE, sizeof(P_TABLE));
-		memcpy(S.data(), S_TABLE, sizeof(S_TABLE));
-
-		// Initialize P & S
-		for (unsigned i = 0; i < P.size(); i++)
-		{
-			for (int j = 0; j < 4; j++) {
-				shifted = (shifted << 8) | key[keyIndex];
-				keyIndex = (keyIndex + 1) % key.size();
-			}
-			P[i] ^= shifted;
-		}
-
-		// Expand Key
-		uint32_t l = 0, r = 0;
-		for (int i = 0; i < 18; i+=2)
+		encipherBlock(l, r);
+		P[i] = l;
+		P[i + 1] = r;
+	}
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 256; j += 2)
 		{
 			encipherBlock(l, r);
-			P[i] = l;
-			P[i + 1] = r;
-		}
-		for (int i = 0; i < 4; i++)
-		{
-			for (int j = 0; j < 256; j += 2)
-			{
-				encipherBlock(l, r);
-				S[i][j] = l;
-				S[i][j + 1] = r;
-			}
+			S[i][j] = l;
+			S[i][j + 1] = r;
 		}
 	}
-
-	void encrypt(uint8_t *data, int length)
-	{
-		// Multiple of 8 check
-		assert(length % 8 == 0);
-
-		// Encipher 8 bytes at a time
-		for (int i = 0; i < length; i += 8)
-		{
-			uint32_t xl = (uint32_t)((data[i + 3]) | (data[i + 2] << 8) | (data[i + 1] << 16) | (data[i + 0] << 24));
-			uint32_t xr = (uint32_t)((data[i + 7]) | (data[i + 6] << 8) | (data[i + 5] << 16) | (data[i + 4] << 24));
-			encipherBlock(xl, xr);
-			data[i + 7] = (uint8_t)(xr >> 0);
-			data[i + 6] = (uint8_t)(xr >> 8);
-			data[i + 5] = (uint8_t)(xr >> 16);
-			data[i + 4] = (uint8_t)(xr >> 24);
-			data[i + 3] = (uint8_t)(xl >> 0);
-			data[i + 2] = (uint8_t)(xl >> 8);
-			data[i + 1] = (uint8_t)(xl >> 16);
-			data[i + 0] = (uint8_t)(xl >> 24);
-		}
-	}
-
-	void decrypt(uint8_t *data, int length)
-	{
-		// Multiple of 8 check
-		assert(length % 8 == 0);
-
-		// Decipher 8 bytes at a time
-		for (int i = 0; i < length; i += 8)
-		{
-			uint32_t xl = (uint32_t)((data[i + 3]) | (data[i + 2] << 8) | (data[i + 1] << 16) | (data[i + 0] << 24));
-			uint32_t xr = (uint32_t)((data[i + 7]) | (data[i + 6] << 8) | (data[i + 5] << 16) | (data[i + 4] << 24));
-			decipherBlock(xl, xr);
-			data[i + 7] = (uint8_t)(xr >> 0);
-			data[i + 6] = (uint8_t)(xr >> 8);
-			data[i + 5] = (uint8_t)(xr >> 16);
-			data[i + 4] = (uint8_t)(xr >> 24);
-			data[i + 3] = (uint8_t)(xl >> 0);
-			data[i + 2] = (uint8_t)(xl >> 8);
-			data[i + 1] = (uint8_t)(xl >> 16);
-			data[i + 0] = (uint8_t)(xl >> 24);
-		}
-	}
-
-private:
-	// Modified Blowfish; F() is called on both L and R and both are XORed with P.
-	void encipherBlock(uint32_t& xl, uint32_t& xr)
-	{
-		uint32_t temp;
-
-		// L does not get Feisteled in the first pass
-		xl ^= P[0];
-		xr = xr ^ F(xl) ^ P[1];
-
-		// 12 passes
-		for (int i = 2; i < 16; i++)
-		{
-			xl = xl ^ F(xr) ^ P[i++];
-			xr = xr ^ F(xl) ^ P[i];
-		}
-
-		// R does not get Feisteled in the last pass
-		xl = xl ^ F(xr) ^ P[16];
-		xr ^= P[17];
-
-		// Swap left/right
-		temp = xl;
-		xl = xr;
-		xr = temp;
-	}
-
-	// Modified Blowfish; reverse of encipher block
-	void decipherBlock(uint32_t& xl, uint32_t& xr)
-	{
-		uint32_t temp;
-
-		/* ExChange xl and xr */
-		temp = xl;
-		xl = xr;
-		xr = temp;
-
-		// L does not get Feisteled in the first pass
-		xr ^= P[17];
-		xl = xl ^ F(xr) ^ P[16];
-
-		// 12 passes
-		for (int i = 15; i >= 2; i--)
-		{
-			xr = xr ^ F(xl) ^ P[i--];
-			xl = xl ^ F(xr) ^ P[i];
-		}
-
-		// R did not get Feisteled in the last pass
-		xr = xr ^ F(xl) ^ P[1];
-		xl ^= P[0];
-	}
-
-	uint32_t F(uint32_t x)
-	{
-		uint16_t d = (uint16_t)(x & 0x00FF);
-		x >>= 8;
-		uint16_t c = (uint16_t)(x & 0x00FF);
-		x >>= 8;
-		uint16_t b = (uint16_t)(x & 0x00FF);
-		x >>= 8;
-		uint16_t a = (uint16_t)(x & 0x00FF);
-
-		uint32_t result = (uint32_t) S[0][a] + S[1][b];
-		result ^= S[2][c];
-		result += S[3][d];
-
-		return result;
-	}
-
-	static void swapEndian(uint32_t& input)
-	{
-		input = ((input >> 24) & 0xff) |
-				((input << 8) & 0xff0000) |
-				((input >> 8) & 0xff00) |
-				((input << 24) & 0xff000000);
-	}
-};
-
-int loadAndDecrypt(const std::string& path)
-{
-	FILE *f = fopen(path.c_str(), "rb");
-	if (f == nullptr) {
-		perror(path.c_str());
-		return -1;
-	}
-	fseek(f, 0, SEEK_END);
-	size_t size = ftell(f);
-	fseek(f, 0, SEEK_SET);
-	std::vector<uint8_t> vms;
-	vms.resize(size);
-	if (fread(vms.data(), size, 1, f) != 1) {
-		perror("read error");
-		return -1;
-	}
-	fclose(f);
-	if (vms.size() != 0x800) {
-		fprintf(stderr, "Not a valid Daytona Key VMS file: wrong size\n");
-		return -1;
-	}
-	std::string signature(&vms[0], &vms[0x10]);
-	if (signature != "KEY DATA        ") {
-		fprintf(stderr, "Not a valid Daytona Key VMS file: wrong signature\n");
-		return -1;
-	}
-	SegaCrypto crypto;
-	uint8_t *keyData = &vms[0x680];
-	crypto.decrypt(keyData, 0x50);
-	std::string username(keyData, keyData + 0x20);
-	std::string ip(keyData + 0x20, keyData + 0x30);
-	//username = username.Remove(username.IndexOf('\0'));
-	//ip = ip.Remove(ip.IndexOf('\0'));
-	printf("Loaded and decrypted key!\n->Username: %s\n->IP: %s\n", username.c_str(), ip.c_str());
-
-	return 0;
 }
 
-static bool writeFile(const std::string& path, const std::vector<uint8_t> data)
+void SegaCrypto::encrypt(uint8_t *data, int length)
 {
-	FILE *f = fopen(path.c_str(), "wb");
-	if (f == nullptr) {
-		perror(path.c_str());
-		return false;
+	// Multiple of 8 check
+	assert(length % 8 == 0);
+
+	// Encipher 8 bytes at a time
+	for (int i = 0; i < length; i += 8)
+	{
+		uint32_t xl = (uint32_t)((data[i + 3]) | (data[i + 2] << 8) | (data[i + 1] << 16) | (data[i + 0] << 24));
+		uint32_t xr = (uint32_t)((data[i + 7]) | (data[i + 6] << 8) | (data[i + 5] << 16) | (data[i + 4] << 24));
+		encipherBlock(xl, xr);
+		data[i + 7] = (uint8_t)(xr >> 0);
+		data[i + 6] = (uint8_t)(xr >> 8);
+		data[i + 5] = (uint8_t)(xr >> 16);
+		data[i + 4] = (uint8_t)(xr >> 24);
+		data[i + 3] = (uint8_t)(xl >> 0);
+		data[i + 2] = (uint8_t)(xl >> 8);
+		data[i + 1] = (uint8_t)(xl >> 16);
+		data[i + 0] = (uint8_t)(xl >> 24);
 	}
-	if (fwrite(&data[0], data.size(), 1, f) != 1) {
-		perror("VMS write error");
-		fclose(f);
-		return false;
-	}
-	fclose(f);
-	return true;
 }
 
-static std::vector<uint8_t> cutKey(const std::string& username, const std::string& ip)
+void SegaCrypto::decrypt(uint8_t *data, int length)
+{
+	// Multiple of 8 check
+	assert(length % 8 == 0);
+
+	// Decipher 8 bytes at a time
+	for (int i = 0; i < length; i += 8)
+	{
+		uint32_t xl = (uint32_t)((data[i + 3]) | (data[i + 2] << 8) | (data[i + 1] << 16) | (data[i + 0] << 24));
+		uint32_t xr = (uint32_t)((data[i + 7]) | (data[i + 6] << 8) | (data[i + 5] << 16) | (data[i + 4] << 24));
+		decipherBlock(xl, xr);
+		data[i + 7] = (uint8_t)(xr >> 0);
+		data[i + 6] = (uint8_t)(xr >> 8);
+		data[i + 5] = (uint8_t)(xr >> 16);
+		data[i + 4] = (uint8_t)(xr >> 24);
+		data[i + 3] = (uint8_t)(xl >> 0);
+		data[i + 2] = (uint8_t)(xl >> 8);
+		data[i + 1] = (uint8_t)(xl >> 16);
+		data[i + 0] = (uint8_t)(xl >> 24);
+	}
+}
+
+// Modified Blowfish; F() is called on both L and R and both are XORed with P.
+void SegaCrypto::encipherBlock(uint32_t& xl, uint32_t& xr)
+{
+	uint32_t temp;
+
+	// L does not get Feisteled in the first pass
+	xl ^= P[0];
+	xr = xr ^ F(xl) ^ P[1];
+
+	// 12 passes
+	for (int i = 2; i < 16; i++)
+	{
+		xl = xl ^ F(xr) ^ P[i++];
+		xr = xr ^ F(xl) ^ P[i];
+	}
+
+	// R does not get Feisteled in the last pass
+	xl = xl ^ F(xr) ^ P[16];
+	xr ^= P[17];
+
+	// Swap left/right
+	temp = xl;
+	xl = xr;
+	xr = temp;
+}
+
+// Modified Blowfish; reverse of encipher block
+void SegaCrypto::decipherBlock(uint32_t& xl, uint32_t& xr)
+{
+	uint32_t temp;
+
+	/* ExChange xl and xr */
+	temp = xl;
+	xl = xr;
+	xr = temp;
+
+	// L does not get Feisteled in the first pass
+	xr ^= P[17];
+	xl = xl ^ F(xr) ^ P[16];
+
+	// 12 passes
+	for (int i = 15; i >= 2; i--)
+	{
+		xr = xr ^ F(xl) ^ P[i--];
+		xl = xl ^ F(xr) ^ P[i];
+	}
+
+	// R did not get Feisteled in the last pass
+	xr = xr ^ F(xl) ^ P[1];
+	xl ^= P[0];
+}
+
+uint32_t SegaCrypto::F(uint32_t x)
+{
+	uint16_t d = (uint16_t)(x & 0x00FF);
+	x >>= 8;
+	uint16_t c = (uint16_t)(x & 0x00FF);
+	x >>= 8;
+	uint16_t b = (uint16_t)(x & 0x00FF);
+	x >>= 8;
+	uint16_t a = (uint16_t)(x & 0x00FF);
+
+	uint32_t result = (uint32_t) S[0][a] + S[1][b];
+	result ^= S[2][c];
+	result += S[3][d];
+
+	return result;
+}
+
+std::vector<uint8_t> cutKey(const std::string& username, const std::string& ip)
 {
 	std::vector<uint8_t> data;
 	data.resize(0x50);
@@ -514,7 +441,7 @@ static std::vector<uint8_t> cutKey(const std::string& username, const std::strin
 	return data;
 }
 
-static std::vector<uint8_t> generateVMI(int fileSize)
+std::vector<uint8_t> generateVMI(int fileSize)
 {
 	std::vector<uint8_t> vmiFile;
 	vmiFile.resize(0x6C);
@@ -552,62 +479,12 @@ static std::vector<uint8_t> generateVMI(int fileSize)
 	return vmiFile;
 }
 
-static std::vector<uint8_t> generateVMS(const std::vector<uint8_t> keyData)
+std::vector<uint8_t> generateVMS(const std::vector<uint8_t> keyData)
 {
 	std::vector<uint8_t> fileOut;
-	fileOut.resize(0x800);
+	fileOut.resize(VMS_SIZE);
 	memcpy(&fileOut[0], VMSHeader, sizeof(VMSHeader));
 	memcpy(&fileOut[0x680], &keyData[0], 0x50);
 	memcpy(&fileOut[0x680 + 0x50], VMSFooter, sizeof(VMSFooter));
 	return fileOut;
-}
-
-int main(int argc, char *argv[])
-{
-	std::string decryptPath;
-	std::string encryptPath = ".";
-	std::string password;
-	std::string ip = "192.168.1.31";
-	int opt;
-	while ((opt = getopt(argc, argv, "d:p:i:o:")) != -1)
-	{
-		switch (opt)
-		{
-		case 'd':
-			decryptPath = optarg;
-			break;
-		case 'p':
-			password = optarg;
-			break;
-		case 'i':
-			ip = optarg;
-			break;
-		case 'o':
-			encryptPath = optarg;
-			break;
-		default:
-			fprintf(stderr, "Usage: encrypt: %s [-p <password>] [-i <ip address>] [-o <path>]  <username>\n decrypt: %s -d <path> \n", argv[0], argv[0]);
-			exit(1);
-		}
-	}
-	printf("Daytona USA KeyCutter by Ioncannon... creates online key files for the Dreamcast game\n");
-	if (!decryptPath.empty())
-		return loadAndDecrypt(decryptPath);
-
-	if (optind == argc) {
-		fprintf(stderr, "Specify a user name\n");
-		exit(1);
-	}
-	std::string userName = argv[optind];
-	printf("Cutting you a new key...\n");
-	std::vector<uint8_t> encryptedKey = cutKey(userName, ip);
-	std::vector<uint8_t> vmsFile = generateVMS(encryptedKey);
-	std::vector<uint8_t> vmiFile = generateVMI(vmsFile.size());
-	if (!writeFile(encryptPath + "/DAYTKEY_.VMS", vmsFile))
-		return 1;
-	if (!writeFile(encryptPath + "/DAYTKEY_.VMI", vmiFile))
-		return 1;
-	printf("DAYTKEY_.VMS and DAYTKEY_.VMI generated.\n");
-
-	return 0;
 }

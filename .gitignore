@@ -1,0 +1,7 @@
+/build/
+/*.o
+/iwango_server
+/keycutter
+/DAYTKEY_.VMI
+/DAYTKEY_.VMS
+/keycutter.cgi

@@ -4,6 +4,8 @@
 #include <unordered_map>
 #include <sys/time.h>
 
+using sstream = std::stringstream;
+
 enum CLIOpcode : uint16_t
 {
 	LOGIN = 0x01,
@@ -49,7 +51,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	}
 
 	// Is this IP already in the server? IP is assumed to be a WAN IP due to dial-up days. Disabled when debugging.
-#if !DEBUG
+#ifndef DEBUG
 	exists = Server::instance().IsIPUnique(player);
 	if (exists != nullptr) {
 		exists->name = "";
@@ -62,12 +64,14 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	time_t now;
 	time(&now);
 	struct tm *tm = localtime(&now);
-	player->send(0x11, "0100 0102 " + std::to_string(tm->tm_year + 1900)
-			+ ":" + std::to_string(tm->tm_mon + 1)
-			+ ":" + std::to_string(tm->tm_mday)
-			+ ":" + std::to_string(tm->tm_hour)
-			+ ":" + std::to_string(tm->tm_min)
-			+ ":" + std::to_string(tm->tm_sec));
+	sstream ss;
+	ss << "0100 0102 " << (tm->tm_year + 1900)
+	   << ":" << (tm->tm_mon + 1)
+	   << ":" << tm->tm_mday
+	   << ":" << tm->tm_hour
+	   << ":" << tm->tm_min
+	   << ":" << tm->tm_sec;
+	player->send(0x11, ss.str());
 }
 
 static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -102,10 +106,14 @@ static void refreshLobbiesCommand(Player::Ptr player, const std::vector<uint8_t>
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	const std::vector<Lobby::Ptr>& lobbies = Server::instance().getLobbyList();
 	for (auto& lobby : lobbies)
-		player->send(0x18, lobby->name + " " + std::to_string(lobby->members.size())
-				+ " " + std::to_string(lobby->capacity) + " " + std::to_string(lobby->flags)
-				+ " " + (lobby->hasSharedMem ? lobby->sharedMem : "#")
-				+ " #" + lobby->game.name);
+	{
+		sstream ss;
+		ss << lobby->name << ' ' << lobby->members.size()
+		   << ' ' << lobby->capacity << ' ' << lobby->flags
+		   << ' ' << (lobby->hasSharedMem ? lobby->sharedMem : "#")
+		   << " #" << lobby->game.name;
+		player->send(0x18, ss.str());
+	}
 	player->send(0x19);
 }
 
@@ -124,8 +132,7 @@ static void createOrJoinLobby(Player::Ptr player, const std::vector<uint8_t>&, c
 		player->joinLobby(lobby);
 }
 
-static void leaveLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
-{
+static void leaveLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
 	player->leaveLobby();
 }
 
@@ -136,25 +143,25 @@ static void refreshTeamsCommand(Player::Ptr player, const std::vector<uint8_t>&,
 		std::vector<std::string> split = splitString(dataAsString, ' ');
 		for (Team::Ptr& team : player->lobby->teams)
         {
-			std::string sharedMem = team->sharedMem.length() != 0 ? "*" + team->sharedMem : std::string("#");
-			std::string teamMembers;
-
-            for (Player::Ptr& p : team->members)
-            {
-            	teamMembers += " ";
-            	if (team->host == p)
-            		teamMembers += "*";
-            	else
-            		teamMembers += "#";
-            	teamMembers += p->name;
+			sstream ss;
+			ss << team->name
+			   << ' ' << team->members.size() << ' ' << team->capacity
+			   << ' ' << team->flags << ' ';
+			if (!team->sharedMem.empty())
+				ss << '*' << team->sharedMem;
+			else
+				ss << '#';
+			for (Player::Ptr& p : team->members)
+			{
+				ss << ' ';
+				if (team->host == p)
+					ss << '*';
+				else
+					ss << '#';
+				ss << p->name;
             }
-
-            player->send(0x32, team->name
-            		+ " " + std::to_string(team->members.size())
-            		+ " " + std::to_string(team->capacity)
-					+ " " + std::to_string(team->flags)
-        			+ " " + sharedMem + teamMembers
-        			+ " " + player->lobby->game.name);
+			ss << ' ' << player->lobby->game.name;
+            player->send(0x32, ss.str());
         }
 	}
 	player->send(0x33);
@@ -293,7 +300,7 @@ static std::vector<uint8_t> test(int num)
 
 static void refreshUsersCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	int count;
+	int count = 0;
 	if (dataAsString == "2P_Red")
 		count = 0;
 	else if (dataAsString == "2P_Blue")
@@ -315,10 +322,14 @@ static void refreshUsersCommand(Player::Ptr player, const std::vector<uint8_t>&,
 static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	Player::Ptr found = Server::instance().getPlayer(dataAsString);
-	if (found != nullptr)
-	{
-		std::string lobby = found->lobby != nullptr ? "!" + found->lobby->name : "#";
-		player->send(0x07, found->name + " !" + Server::instance().getName() + " " + lobby);
+	if (found != nullptr) {
+		sstream ss;
+		ss << found->name << " !" << Server::instance().getName() << ' ';
+		if (found->lobby != nullptr)
+			ss << '!' << found->lobby->name;
+		else
+			ss << '#';
+		player->send(0x07, ss.str());
 	}
 	player->send(0xC9, "1");
 }

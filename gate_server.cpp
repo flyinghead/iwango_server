@@ -6,7 +6,7 @@
 #include <vector>
 #include <signal.h>
 
-static asio::io_context io_context;
+using sstream = std::stringstream;
 
 class GateConnection : public SharedThis<GateConnection>
 {
@@ -86,15 +86,9 @@ private:
 				printf("Connection closed\n");
 			return;
 		}
-		if (len >= 0xffff)
-		{
-			// FIXME Something is going wrong, buffer full, gtfo.
-			fprintf(stderr, "ERROR: buffer overflow\n");
-			return;
-		}
 		// Grab data and process if correct.
 		std::string payload = std::string(&recvBuffer[2], &recvBuffer[len]);
-		printf("Request: [%s]\n", payload.c_str());
+		printf("gate: Request: [%s]\n", payload.c_str());
 		processRequest(payload);
 		receive();
 	}
@@ -123,10 +117,10 @@ private:
 
 			// Lobby servers list
 			sendPacket(0x3E8);
-			sendPacket(0x3E9, "DCNet "
-					+ socket.local_endpoint().address().to_string()
-					+ " " + std::to_string(socket.local_endpoint().port() + 1)
-					+ " 1");
+			sstream ss;
+			ss << "DCNet " << socket.local_endpoint().address().to_string()
+			   << ' ' << (socket.local_endpoint().port() + 1) << " 1";
+			sendPacket(0x3E9, ss.str());
 			sendPacket(0x3EA);
 		}
 		else if (split[0] == "HANDLE_LIST_GET")
