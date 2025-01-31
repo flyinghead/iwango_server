@@ -59,7 +59,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 
 	// Is this handle already in the server? Handle is used as a key and HAS to be unique.
 	// FIXME JP users will all connect with 'flycast1'
-	Player::Ptr exists = player->server.getPlayer(player->name);
+	Player::Ptr exists = player->server.getPlayer(player->name, player);
 	if (exists != nullptr) {
 		exists->name = "";
 		exists->disconnect();

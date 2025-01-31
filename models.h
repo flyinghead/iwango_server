@@ -266,10 +266,10 @@ public:
 		return lobbies;
 	}
 
-	Player::Ptr getPlayer(const std::string& name)
+	Player::Ptr getPlayer(const std::string& name, Player::Ptr except = {})
 	{
 		for (auto& player : players)
-			if (player->name == name)
+			if (player != except && player->name == name)
 				return player;
 		return nullptr;
 	}
