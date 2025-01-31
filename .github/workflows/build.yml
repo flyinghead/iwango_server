@@ -1,0 +1,31 @@
+name: iwango_server build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    name: iwango_server
+    runs-on: ubuntu-latest
+    container: debian:11
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get -y install build-essential git libcurl4-gnutls-dev libasio-dev libicu-dev
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Build
+        run: make
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: artifacts
+          path: |
+            iwango_server
+            keycutter
+            keycutter.cgi
