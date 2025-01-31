@@ -19,15 +19,19 @@ enum CLIOpcode : uint16_t
 	PING = 0x0A,
 	SEARCH = 0x0B,
 	GET_LICENSE = 0x0C,
+	// TODO tetris,golf lobby: Request[41]: 000e []
 	GET_TEAMS = 0x0F,
 	REFRESH_PLAYERS = 0x10,
 	CHAT_LOBBY = 0x11,
 	SHAREDMEM_PLAYER = 0x1B,
+	// TODO tetris lobby: Request[51]: 001c []
+	// TODO tetris lobby: Request[54]: 001d []
 	SHAREDMEM_TEAM = 0x20,
 	LEAVE_TEAM = 0x21,
+	// TODO tetris,golf 0x28 (no args)
 	GET_EXTRAUSERMEM = 0x29,
 	REGIST_EXTRAUSERMEM_START = 0x2A,
-	REGIST_EXTRAUSERMEM_TRANSFER = 0x2B,
+	REGIST_EXTRAUSERMEM_TRANSFER = 0x2B,	// TODO golf seems to save stuff like friends. Need db
 	REGIST_EXTRAUSERMEM_END = 0x2C,
 	RECONNECT = 0x0D,
 	LAUNCH_REQUEST = 0x22,
@@ -42,9 +46,20 @@ enum CLIOpcode : uint16_t
 static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
+	player->name = player->toUtf8(split[0]);
+	if (player->name.empty())
+	{
+		// FIXME not working no matter what I send...
+		player->send(0x03, "Empty handle");
+	    player->send(0xE3);
+	    player->send(0x16);
+	    player->disconnect(false);
+		return;
+	}
 
 	// Is this handle already in the server? Handle is used as a key and HAS to be unique.
-	Player::Ptr exists = Server::instance().getPlayer(split[0]);
+	// FIXME JP users will all connect with 'flycast1'
+	Player::Ptr exists = player->server.getPlayer(split[0]);
 	if (exists != nullptr) {
 		exists->name = "";
 		exists->disconnect();
@@ -52,7 +67,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 
 	// Is this IP already in the server? IP is assumed to be a WAN IP due to dial-up days. Disabled when debugging.
 #ifndef DEBUG
-	exists = Server::instance().IsIPUnique(player);
+	exists = player->server.IsIPUnique(player);
 	if (exists != nullptr) {
 		exists->name = "";
 		exists->disconnect();
@@ -60,7 +75,6 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 #endif
 
 	// We are good to continue
-	player->name = split[0];
 	time_t now;
 	time(&now);
 	struct tm *tm = localtime(&now);
@@ -76,10 +90,17 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 
 static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	std::vector<std::string> split = splitString(dataAsString, ' ');
+	//std::vector<std::string> split = splitString(dataAsString, ' ');
+	// args:
+	// 0	:key user id
+	// 1	":dummy"
+	// 2	:gameId
+	// 3	:console id
+	// 4	:1
+	// 5	:0 or :1 (handle index?)
 	player->send(0x0C, "LOB 999 999 AAA AAA");
-	player->send(0x0A, "Welcome to IWANGO Emulator by Ioncannon");
-	player->send(0xE1);
+	player->send(0x0A, "Welcome to IWANGO Emulator by Ioncannon");	// TODO config
+	player->send(0xE1);	// Ext MeM ready?
 }
 
 static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -93,8 +114,8 @@ static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>
 	else
 	{
 		// Get specific
-		std::string name = split[0];
-		Player::Ptr p = Server::instance().getPlayer(name);
+		std::string name = player->toUtf8(split[0]);
+		Player::Ptr p = player->server.getPlayer(name);
 		if (p != nullptr)
 			player->send(0x30, p->getSendDataPacket());
 	}
@@ -104,14 +125,14 @@ static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>
 static void refreshLobbiesCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	const std::vector<Lobby::Ptr>& lobbies = Server::instance().getLobbyList();
+	const std::vector<Lobby::Ptr>& lobbies = player->server.getLobbyList();
 	for (auto& lobby : lobbies)
 	{
 		sstream ss;
-		ss << lobby->name << ' ' << lobby->members.size()
+		ss << player->fromUtf8(lobby->name) << ' ' << lobby->members.size()
 		   << ' ' << lobby->capacity << ' ' << lobby->flags
 		   << ' ' << (lobby->hasSharedMem ? lobby->sharedMem : "#")
-		   << " #" << lobby->game.name;
+		   << " #" << lobby->gameName;
 		player->send(0x18, ss.str());
 	}
 	player->send(0x19);
@@ -120,14 +141,15 @@ static void refreshLobbiesCommand(Player::Ptr player, const std::vector<uint8_t>
 static void createOrJoinLobby(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	if (split.size() != 2)
-		// TODO log
+	if (split.size() != 2) {
+		fprintf(stderr, "ENTR_LOBBY: bad arg count %zd\n", split.size());
 		return;
-	std::string& lobbyName = split[0];
+	}
+	std::string lobbyName = player->toUtf8(split[0]);
 	uint16_t capacity = atoi(split[1].c_str());
-	Lobby::Ptr lobby = Server::instance().getLobby(lobbyName);
+	Lobby::Ptr lobby = player->server.getLobby(lobbyName);
 	if (lobby == nullptr)
-		lobby = Server::instance().createLobby(lobbyName, capacity);
+		lobby = player->server.createLobby(lobbyName, capacity);
 	if (lobby != nullptr)
 		player->joinLobby(lobby);
 }
@@ -144,7 +166,7 @@ static void refreshTeamsCommand(Player::Ptr player, const std::vector<uint8_t>&,
 		for (Team::Ptr& team : player->lobby->teams)
         {
 			sstream ss;
-			ss << team->name
+			ss << player->fromUtf8(team->name)
 			   << ' ' << team->members.size() << ' ' << team->capacity
 			   << ' ' << team->flags << ' ';
 			if (!team->sharedMem.empty())
@@ -158,9 +180,9 @@ static void refreshTeamsCommand(Player::Ptr player, const std::vector<uint8_t>&,
 					ss << '*';
 				else
 					ss << '#';
-				ss << p->name;
+				ss << player->fromUtf8(p->name);
             }
-			ss << ' ' << player->lobby->game.name;
+			ss << ' ' << player->lobby->gameName;
             player->send(0x32, ss.str());
         }
 	}
@@ -174,7 +196,7 @@ static void createTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, c
 	{
 		unsigned capacity = atoi(split[0].c_str());
 		if (player->lobby != nullptr)
-			player->lobby->createTeam(player, split[1], capacity, split[2]);
+			player->lobby->createTeam(player, player->toUtf8(split[1]), capacity, split[2]);
 		else
 			player->disconnect();
 	}
@@ -183,8 +205,7 @@ static void createTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, c
 static void joinTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	if (split.size() == 1)
-		player->joinTeam(split[0]);
+	player->joinTeam(player->toUtf8(split[0]));
 }
 
 static void leaveTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
@@ -193,9 +214,7 @@ static void leaveTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, co
 
 static void refreshGamesCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	const auto& games = Server::instance().getGames();
-	for (const auto& game : games)
-		player->send(0x1B, "1 " + game.name);
+	player->send(0x1B, "1 " + player->server.getGameName());
 	player->send(0x1C);
 }
 
@@ -203,8 +222,7 @@ static void selectGameCommand(Player::Ptr player, const std::vector<uint8_t>&, c
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	std::string& gameName = split[0];
-	player->game = Server::instance().getGame(gameName);
-	player->send(0x1D, player->name + " " + player->game->name);
+	player->send(0x1D, player->fromUtf8(player->name) + " " + gameName);
 }
 
 static void getLicenseCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
@@ -216,15 +234,15 @@ static void getExtraUserMem(Player::Ptr player, const std::vector<uint8_t>&, con
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	if (split.size() == 3)
 	{
-		//std::string& userName = split[0];
-		//int offet = atoi(split[1].c_str());
-		//int length = atoi(split[2].c_str());
-
 		uint8_t mem[] {
 				0x52, 0x45, 0x47, 0x41, 0x54, 0x45, 0x54, 0x52, 0x49, 0x53, 0x20, 0x31, 0x2E, 0x30, 0x30, 0x00, // SEGATETRIS 1.00
 				0x0C, 0x02, 0x02, 0x00, 0x01, 0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x00
 		};
-		player->sendExtraMem(mem, 0, 0x1C);
+		//std::string& userName = split[0];
+		int offset = std::clamp<int>(atoi(split[1].c_str()), 0, sizeof(mem));
+		int length = std::clamp<int>(atoi(split[2].c_str()), 0, sizeof(mem) - offset);
+
+		player->sendExtraMem(mem, offset, length);
 	}
 	else {
 		player->disconnect();
@@ -237,12 +255,12 @@ static void registerExtraUserMem(Player::Ptr player, const std::vector<uint8_t>&
 
 static void chatLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
 	if (player->lobby != nullptr)
-		player->lobby->sendChat(player->name, dataAsString.substr(dataAsString.find(' ') + 1));
+		player->lobby->sendChat(player->name, player->toUtf8(dataAsString.substr(dataAsString.find(' ') + 1)));
 }
 
 static void chatTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
 	if (player->team != nullptr)
-		player->team->sendChat(player->name, dataAsString);
+		player->team->sendChat(player->name, player->toUtf8(dataAsString));
 }
 
 static void sharedMemPlayerCommand(Player::Ptr player, const std::vector<uint8_t>& data, const std::string&) {
@@ -300,20 +318,11 @@ static std::vector<uint8_t> test(int num)
 
 static void refreshUsersCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
+	std::string lobby = player->toUtf8(dataAsString);
 	int count = 0;
-	if (dataAsString == "2P_Red")
-		count = 0;
-	else if (dataAsString == "2P_Blue")
-		count = 1;
-	else if (dataAsString == "2P_Green")
-		count = 2;
-	else if (dataAsString == "4P_Yellow")
-		count = 3;
-	else if (dataAsString == "4P_Purple")
-		count = 4;
-	else if (dataAsString == "4P_Orange")
-		count = 5;
-
+	Lobby::Ptr pLobby = player->server.getLobby(lobby);
+	if (pLobby)
+		count = pLobby->members.size();
 	for (int i = 0; i < count; i++)
 		player->send(0xDA, test(i));
 	player->send(0xD9);
@@ -321,17 +330,19 @@ static void refreshUsersCommand(Player::Ptr player, const std::vector<uint8_t>&,
 
 static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	Player::Ptr found = Server::instance().getPlayer(dataAsString);
+	Player::Ptr found = player->server.getPlayer(player->toUtf8(dataAsString));
 	if (found != nullptr) {
 		sstream ss;
-		ss << found->name << " !" << Server::instance().getName() << ' ';
+		ss << player->fromUtf8(found->name) << " !" << player->server.getName() << ' ';
 		if (found->lobby != nullptr)
-			ss << '!' << found->lobby->name;
+			ss << '!' << player->fromUtf8(found->lobby->name);
 		else
 			ss << '#';
 		player->send(0x07, ss.str());
 	}
-	player->send(0xC9, "1");
+	player->send(0xC9, "1");	// FIXME golf seems to think it's found, but garbage name(?)
+								// FIXME search and say says failed to send message although the player is found (but self so might be the issue)
+								// fixed: tetris search doesn't seem to work either. Server name was invalid (Daytona_USA_Emu_#1)
 }
 
 static void nullCommand(Player::Ptr, const std::vector<uint8_t>&, const std::string&) {

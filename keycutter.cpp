@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
 	std::string encryptPath = ".";
 	std::string userName;
 	std::string password;
-	std::string ip = "192.168.1.31";
+	std::string ip = "192.168.1.10";
 	int opt;
 	while ((opt = getopt(argc, argv, "d:u:p:i:o:")) != -1)
 	{

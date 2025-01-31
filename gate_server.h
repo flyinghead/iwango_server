@@ -1,5 +1,5 @@
 #pragma once
-#include "common.h"
+#include "asio.h"
 #include "shared_this.h"
 
 class GateConnection;

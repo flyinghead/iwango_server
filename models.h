@@ -1,15 +1,18 @@
 #pragma once
 #include "shared_this.h"
+#include "common.h"
 #include <string>
 #include <memory>
 #include <vector>
 #include <cstring>
 #include <array>
 #include <sstream>
+#include <cassert>
 
 using sstream = std::stringstream;
 class Player;
 class Team;
+class LobbyServer;
 class LobbyConnection;
 
 class Packet
@@ -26,16 +29,6 @@ public:
 	}
 };
 
-class Game
-{
-public:
-	Game(const std::string& name = {}) : name(name) {
-	}
-
-	std::string name;
-	int unknown = 0;
-};
-
 class Lobby : public SharedThis<Lobby>
 {
 public:
@@ -50,14 +43,14 @@ public:
 	unsigned flags = 0;
 	bool hasSharedMem = false;
 	std::string sharedMem;
-	const Game& game;
+	const std::string gameName;
 	unsigned capacity;
 	std::vector<std::shared_ptr<Player>> members;
 	std::vector<std::shared_ptr<Team>> teams;
 
 private:
-	Lobby(const Game& game, const std::string& name, unsigned capacity)
-		: name(name), game(game), capacity(capacity) {}
+	Lobby(const std::string& gameName, const std::string& name, unsigned capacity)
+		: name(name), gameName(gameName), capacity(capacity) {}
 
 	friend super;
 };
@@ -101,23 +94,27 @@ public:
 
 	void sendExtraMem(const uint8_t* extraMem, int offset, int length);
 	int send(uint16_t opcode, const std::string& payload = {}) {
+		//printf("send: %04x [%s]\n", opcode, payload.c_str());
 		return send(opcode, (const uint8_t *)&payload[0], payload.length());
 	}
 	int send(uint16_t opcode, const std::vector<uint8_t>& payload) {
 		return send(opcode, &payload[0], payload.size());
 	}
 	void receive(uint16_t opcode, const std::vector<uint8_t> payload);
+	std::string toUtf8(const std::string& str) const;
+	std::string fromUtf8(const std::string& str) const;
 
 	std::string name;
 	unsigned flags = 0;
 	std::vector<uint8_t> sharedMem;
 	Lobby::Ptr lobby;
 	std::shared_ptr<Team> team;
-	const Game *game = nullptr;
+	GameId gameId {};
+	LobbyServer& server;
 
 private:
-	Player(std::shared_ptr<LobbyConnection> connection)
-		: sharedMem(0x1e), connection(connection) {}
+	Player(std::shared_ptr<LobbyConnection> connection, LobbyServer& server)
+		: sharedMem(0x1e), server(server), connection(connection) {}
 	int send(uint16_t opcode, const uint8_t *payload, unsigned length);
 	std::vector<uint8_t> makePacket(uint16_t opcode, const uint8_t *payload, unsigned length);
 
@@ -134,7 +131,7 @@ public:
 	{
 		sharedMem = memAsStr;
 		for (auto& player : members)
-			player->send(0x34, name + " " + sharedMem);
+			player->send(0x34, player->fromUtf8(name) + " " + sharedMem);
 	}
 	bool addPlayer(Player::Ptr player)
 	{
@@ -151,7 +148,7 @@ public:
 
 		// Send packet to all members
 		for (auto& p : player->lobby->members)
-			p->send(0x29, ss.str());
+			p->send(0x29, p->fromUtf8(ss.str()));
 
 		return true;
 	}
@@ -169,7 +166,7 @@ public:
 
 				// Send Packets
 				for (auto& p : player->lobby->members)
-					p->send(0x3B, name + " " + player->name);
+					p->send(0x3B, p->fromUtf8(name + " " + player->name));
 
 				// Team deleted?
 				if (members.empty())
@@ -183,17 +180,17 @@ public:
 
 	void sendChat(const std::string& from, const std::string& message) {
 		for (auto& player : members)
-			player->send(0x43, from + " " + message);
+			player->send(0x43, player->fromUtf8(from + " " + message));
 	}
 
 	void sendSharedMemPlayer(Player::Ptr owner, const std::vector<uint8_t>& data) {
 		for (auto& player : members)
-			player->send(0x42, Packet::createSharedMemPacket(data, owner->name));
+			player->send(0x42, Packet::createSharedMemPacket(data, player->fromUtf8(owner->name)));
 	}
 
 	void sendGameServer(Player::Ptr p) {
 		for (auto& player : members)
-			player->send(0x3d, "192.168.1.31 9501");	// FIXME
+			player->send(0x3d, "192.168.1.31 9501");	// FIXME used by golf.
 	}
 
 	void launchGame(Player::Ptr p)
@@ -201,7 +198,7 @@ public:
 		sstream ss;
 		ss << members.size();
 		for (auto& player : members)
-			ss << ' ' << (host == player ? "*" : "") << player->name << ' ' << player->getIp();
+			ss << ' ' << (host == player ? "*" : "") << player->fromUtf8(player->name) << ' ' << player->getIp();
 		p->send(0x3e, ss.str());
 	}
 
@@ -222,28 +219,28 @@ private:
 	friend super;
 };
 
-class Server
+class LobbyServer
 {
 public:
-	void addGame(const std::string& name) {
-		games.emplace_back(name);
-	}
-	const std::vector<Game>& getGames() {
-		return games;
-	}
-	const Game *getGame(const std::string& name)
+	LobbyServer(GameId gameId, const std::string& name = {})
+		: gameId(gameId)
 	{
-		for (const auto& game : games)
-			if (game.name == name)
-				return &game;
-		return nullptr;
+		if (!name.empty())
+			this->name = name;
+		servers.push_back(this);
+		createLobby("2P_Red", 100);
+		createLobby("4P_Yellow", 100);
+		createLobby("2P_Blue", 100);
+		createLobby("2P_Green", 100);
+		createLobby("4P_Purple", 100);
+		createLobby("4P_Orange", 100);
 	}
 
 	Lobby::Ptr createLobby(const std::string& name, unsigned capacity)
 	{
 		if (getLobby(name) == nullptr && capacity > 0)
 		{
-			Lobby::Ptr lobby = Lobby::create(games[0], name, capacity);
+			Lobby::Ptr lobby = Lobby::create(getGameName(), name, capacity);
 			lobbies.push_back(lobby);
 			return lobby;
 		}
@@ -286,8 +283,7 @@ public:
 				return player;
 		return nullptr;
 	}
-	void addPlayer(Player::Ptr player)
-	{
+	void addPlayer(Player::Ptr player) {
 		players.push_back(player);
 	}
 	void removePlayer(Player::Ptr player)
@@ -304,14 +300,45 @@ public:
 		return name;
 	}
 
-	static Server& instance() {
-		static Server server;
-		return server;
+	GameId getGameId() const {
+		return gameId;
+	}
+
+	uint16_t getIpPort() const
+	{
+		switch (gameId)
+		{
+		case GameId::Daytona: return 9501;
+		case GameId::Tetris: return 9502;
+		case GameId::GolfShiyouyo: return 9503;
+		default: assert(false); return 0;
+		}
+	}
+
+	std::string getGameName() const
+	{
+		switch (gameId)
+		{
+		case GameId::Daytona: return "Daytona";
+		case GameId::Tetris: return "Tetris";
+		case GameId::GolfShiyouyo: return "Golf";
+		default: assert(false); return "???";
+		}
+	}
+
+	static LobbyServer *getServer(GameId gameId)
+	{
+		for (LobbyServer *server : servers)
+			if (server->getGameId() == gameId
+					|| (server->getGameId() == GameId::Daytona && gameId == GameId::DaytonaJP))
+				return server;
+		return nullptr;
 	}
 
 private:
-	std::string name = "Daytona_USA_Emu_#1";	// TODO
+	GameId gameId;
+	std::string name = "IWANGO_Server_1";	// TODO config
 	std::vector<Player::Ptr> players;
 	std::vector<Lobby::Ptr> lobbies;
-	std::vector<Game> games;
+	static std::vector<LobbyServer *> servers;
 };

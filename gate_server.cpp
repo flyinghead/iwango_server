@@ -2,6 +2,7 @@
 #include "shared_this.h"
 #include "database.h"
 #include "gate_server.h"
+#include "models.h"
 #include <stdio.h>
 #include <vector>
 #include <signal.h>
@@ -106,21 +107,23 @@ private:
 	void processRequest(const std::string& request)
 	{
 		std::vector<std::string> split = splitString(request, ' ');
-		for (const auto& arg : split)
-			printf("split [%s]\n", arg.c_str());
 		if (split[0] == "REQUEST_FILTER")
 		{
 			if (split.size() < 2) {
 				sendPacket(ERROR1);
 				return;
 			}
-
+			GameId gameId = identifyGame(split[1]);
 			// Lobby servers list
 			sendPacket(0x3E8);
-			sstream ss;
-			ss << "DCNet " << socket.local_endpoint().address().to_string()
-			   << ' ' << (socket.local_endpoint().port() + 1) << " 1";
-			sendPacket(0x3E9, ss.str());
+			LobbyServer *server = LobbyServer::getServer(gameId);
+			if (server != nullptr)
+			{
+				sstream ss;
+				ss << server->getName() << ' ' << socket.local_endpoint().address().to_string()
+				   << ' ' << server->getIpPort() << " 1";
+				sendPacket(0x3E9, ss.str());
+			}
 			sendPacket(0x3EA);
 		}
 		else if (split[0] == "HANDLE_LIST_GET")
@@ -129,30 +132,39 @@ private:
 				sendPacket(ERROR1);
 				return;
 			}
+			GameId gameId = identifyGame(split[2]);
+			LobbyServer *server = LobbyServer::getServer(gameId);
 
+			// TODO golf wants max 9 chars for handle. cause of non connection for player 2?
+			// tetris max 8 when typing (but no issue with generated flycast1_1)
 			std::string daytonaHash = split[1];
-
-			// Confirm this username exists
-			std::string username = database.iwangoGetVerification(daytonaHash);
-
-			if (username.empty())
+			std::string handleName;
+			for (int i = 0; i < 100 && server != nullptr; i++)
 			{
-				username = database.dreamPipeGetVerification(daytonaHash);
-				if (username.empty()) {
-					database.addUserIfMissing(username, daytonaHash);
+				if (daytonaHash == "flycast1" || daytonaHash == "flycast2")
+				{
+					handleName = "Player";
+					if (i == 0)
+						i = 1;
 				}
 				else {
-					sendPacket(ERROR1);
-					return;
+					handleName = daytonaHash;
 				}
+				if (i > 0)
+					handleName += std::to_string(i);
+				if (gameId == GameId::Daytona)
+					handleName += ".us";
+				if (server->getPlayer(handleName) == nullptr)
+					break;
+				handleName = "";
 			}
-			// Get the list of handles that this user has registered.
-			// TODO
-			//std::vector<std::string> handles = database.getHandles(daytonaHash);
-			//std::string payload;
-			//for (int i = 0; i < handles.size(); i++)
-			//	payload += std::to_string(i + 1) + handles[i] + " ";
-			std::string payload = "1" + daytonaHash + ".us";
+			if (handleName.empty()) {
+				sendPacket(ERROR1);
+				return;
+			}
+			// TODO database
+
+			std::string payload = "1" + utf8ToSjis(handleName, gameId == GameId::GolfShiyouyo);
 			sendPacket(0x3F2, payload);
 		}
 		else if (split[0 ]== "HANDLE_ADD")
@@ -163,12 +175,13 @@ private:
 			}
 
 			std::string daytonaHash = split[1];
+			GameId gameId = identifyGame(split[2]);
 			//int handleIndx = atoi(split[3].c_str());
-			std::string handlename = split[4];
+			std::string handlename = sjisToUtf8(split[4]);
 
 			int result = database.createHandle(daytonaHash, handlename);
 			if (result == 1)
-				sendPacket(0x3F3, "1 " + handlename);
+				sendPacket(0x3F3, "1 " + utf8ToSjis(handlename, gameId == GameId::GolfShiyouyo));
 			else if (result == 0)
 				sendPacket(ERROR1);
 			else if (result == -1)
@@ -182,12 +195,13 @@ private:
 			}
 
 			std::string daytonaHash = split[1];
+			GameId gameId = identifyGame(split[2]);
 			int handleIndx = atoi(split[3].c_str());
-			std::string newHandleName = split[4];
+			std::string newHandleName = sjisToUtf8(split[4]);
 
 			int result = database.replaceHandle(daytonaHash, handleIndx, newHandleName);
 			if (result == 0)
-				sendPacket(0x3F4, "1 " + newHandleName);
+				sendPacket(0x3F4, "1 " + utf8ToSjis(newHandleName, gameId == GameId::GolfShiyouyo));
 			else if (result == 0)
 				sendPacket(ERROR1);
 			else if (result == -1)

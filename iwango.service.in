@@ -1,0 +1,15 @@
+[Unit]
+Description=IWANGO gate and lobby server
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=INSTALL_USER
+ExecStart=INSTALL_DIR/bin/iwango_server
+StandardOutput=append:INSTALL_DIR/var/iwango.log
+
+[Install]
+WantedBy=multi-user.target

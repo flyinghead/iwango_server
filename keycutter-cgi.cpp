@@ -45,7 +45,7 @@ static std::string urlEncode(const std::string& in)
 	sstream ss;
 	for (char c : in)
 	{
-		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= 9)
+		if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
 				|| c == '-' || c == '.' || c == '_' || c == '~')
 			ss << c;
 		else

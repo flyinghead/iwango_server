@@ -1,12 +1,14 @@
 #include "models.h"
 #include "lobby_server.h"
 
+std::vector<LobbyServer *> LobbyServer::servers;
+
 void Lobby::addPlayer(std::shared_ptr<Player> player)
 {
 	members.push_back(player);
 
 	// Confirm Join Lobby
-	player->send(0x13, name + " " + player->name);
+	player->send(0x13, player->fromUtf8(name) + " " + player->fromUtf8(player->name));
 
 	// Send player info to all members
 	for (auto& p : members)
@@ -31,7 +33,7 @@ void Lobby::removePlayer(std::shared_ptr<Player> player)
 
 			// Tell all members to remove the player
 			for (auto& p : members)
-				p->send(0x2C, player->name);
+				p->send(0x2C, p->fromUtf8(player->name));
 			return;
 		}
 	}
@@ -40,7 +42,7 @@ void Lobby::removePlayer(std::shared_ptr<Player> player)
 
 void Lobby::sendChat(const std::string& from, const std::string& message) {
 	for (auto& player : members)
-		player->send(0x2D, from + " " + message);
+		player->send(0x2D, player->fromUtf8(from) + " " + player->fromUtf8(message));
 }
 
 std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const std::string& name, unsigned capacity, const std::string& type)
@@ -50,7 +52,7 @@ std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const s
 	creator->team = team;
 
 	sstream ss;
-	ss << name << ' ' << creator->name << ' ' << capacity << " 0 " << game.name;
+	ss << creator->fromUtf8(name) << ' ' << creator->fromUtf8(creator->name) << ' ' << capacity << " 0 " << gameName;
 	for (auto& p : members)
 		p->send(0x28, ss.str());
 
@@ -67,7 +69,7 @@ void Lobby::deleteTeam(std::shared_ptr<Team> team)
 	}
 	// Tell all members to remove team
 	for (auto& p : members)
-		p->send(0x3A, team->name);
+		p->send(0x3A, p->fromUtf8(team->name));
 }
 
 std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
@@ -126,7 +128,7 @@ void Player::disconnect(bool sendDCPacket)
 		lobby->removePlayer(shared_from_this());
 		lobby.reset();
 	}
-	Server::instance().removePlayer(shared_from_this());
+	server.removePlayer(shared_from_this());
 
 	// Close if need be
 	if (connection)
@@ -136,9 +138,10 @@ void Player::disconnect(bool sendDCPacket)
 
 void Player::setSharedMem(const std::vector<uint8_t>& data)
 {
-	if (data.size() != 0x1e)
-		// TODO log
+	if (data.size() != 0x1e) {
+		fprintf(stderr, "WARN: invalid player sharedMem size: %zd. Ignored\n", data.size());
 		return;
+	}
 	memcpy(sharedMem.data(), &data[0], data.size());
 	if (team)
 		team->sendSharedMemPlayer(shared_from_this(), sharedMem);
@@ -148,20 +151,17 @@ std::vector<uint8_t> Player::getSendDataPacket()
 {
 	sstream ss;
 	if (lobby)
-		ss << lobby->name << ' ';
+		ss << fromUtf8(lobby->name) << ' ';
 	else
 		ss << "# ";
 	if (team && team->host == shared_from_this())
 		ss << '*';
-	ss << name << ' ' << flags << ' ';
+	ss << fromUtf8(name) << ' ' << flags << ' ';
 	if (team)
-		ss << '*' << team->name << ' ';
-	else
-		ss << "# ";
-	if (game != nullptr)
-		ss << '*' << game->name;
+		ss << '*' << fromUtf8(team->name);
 	else
 		ss << '#';
+	ss << " *" << server.getGameName();
 	std::string strData = ss.str();
 
 	std::vector<uint8_t> data(1 + strData.length() + 1 + sharedMem.size() + 4);
@@ -188,6 +188,7 @@ void Player::createTeam(const std::string& name, unsigned capacity, const std::s
 			return;
 		}
 	}
+	fprintf(stderr, "WARN: createTeam: team %s already exists\n", name.c_str());
 	send(0x03); // Name already in use
 }
 void Player::joinTeam(const std::string& name)
@@ -195,13 +196,16 @@ void Player::joinTeam(const std::string& name)
 	if (lobby != nullptr)
 	{
 		Team::Ptr team = lobby->getTeam(name);
-		if (team == nullptr)
-			return; // Some Error, team didn't exist
+		if (team == nullptr) {
+			fprintf(stderr, "WARN: joinTeam: team %s not found\n", name.c_str());
+			return; // TODO Some Error, team didn't exist
+		}
 
 		if (team->addPlayer(shared_from_this()))
 			this->team = team;
 	}
 	else {
+		fprintf(stderr, "WARN: joinTeam: user %s not any lobby\n", this->name.c_str());
 		// TODO Some Error
 	}
 }
@@ -212,13 +216,14 @@ void Player::leaveTeam()
 		this->team = nullptr;
 	}
 	else {
+		fprintf(stderr, "WARN: leaveTeam: user %s not any lobby or team\n", this->name.c_str());
 		// TODO Some Error
 	}
 }
 
 void Player::sendExtraMem(const uint8_t* extraMem, int offset, int length)
 {
-	std::vector<uint8_t> payload(length - offset + 2);
+	std::vector<uint8_t> payload(length + 2);
 	*(uint16_t *)&payload[0] = (uint16_t)length;
 	memcpy(&payload[2], extraMem + offset, length);
 
@@ -253,7 +258,14 @@ std::vector<uint8_t> Player::makePacket(uint16_t opcode, const uint8_t *payload,
 	return data;
 }
 
-void Player::receive(uint16_t opcode, const std::vector<uint8_t> payload)
-{
+void Player::receive(uint16_t opcode, const std::vector<uint8_t> payload) {
 	PacketProcessor::handlePacket(shared_from_this(), opcode, payload);
+}
+
+std::string Player::toUtf8(const std::string& str) const {
+	return sjisToUtf8(str);
+}
+
+std::string Player::fromUtf8(const std::string& str) const {
+	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo);
 }

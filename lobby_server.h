@@ -1,9 +1,8 @@
 #pragma once
 #include "shared_this.h"
-#include "common.h"
+#include "asio.h"
 #include <stdio.h>
 #include <vector>
-#include <asio.hpp>
 
 class Player;
 
@@ -33,8 +32,9 @@ public:
 	void close()
 	{
 		if (socket.is_open()) {
-			socket.shutdown(asio::socket_base::shutdown_both);
-			socket.close();
+			asio::error_code ec;
+			socket.shutdown(asio::socket_base::shutdown_both, ec);
+			socket.close(ec);
 		}
 		player.reset();
 	}
@@ -49,7 +49,7 @@ private:
 		if (sending)
 			return;
 		sending = true;
-		uint16_t packetSize = *(uint16_t *)&sendBuffer[0] + 2;	// FIXME is this OK for lobby?
+		uint16_t packetSize = *(uint16_t *)&sendBuffer[0] + 2;
 		asio::async_write(socket, asio::buffer(sendBuffer, packetSize),
 			std::bind(&LobbyConnection::onSent, shared_from_this(),
 					asio::placeholders::error,

@@ -45,7 +45,7 @@ void LobbyConnection::onSent(const std::error_code& ec, size_t len)
 	}
 }
 
-class LobbyServer : public SharedThis<LobbyServer>
+class LobbyAcceptor : public SharedThis<LobbyAcceptor>
 {
 public:
 	void start()
@@ -53,14 +53,15 @@ public:
 		LobbyConnection::Ptr newConnection = LobbyConnection::create(io_context);
 
 		acceptor.async_accept(newConnection->getSocket(),
-				std::bind(&LobbyServer::handleAccept, shared_from_this(), newConnection, asio::placeholders::error));
+				std::bind(&LobbyAcceptor::handleAccept, shared_from_this(), newConnection, asio::placeholders::error));
 	}
 
 private:
-	LobbyServer(asio::io_context& io_context, uint16_t port)
+	LobbyAcceptor(asio::io_context& io_context, LobbyServer& server)
 		: io_context(io_context),
 		  acceptor(asio::ip::tcp::acceptor(io_context,
-				asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port)))
+				asio::ip::tcp::endpoint(asio::ip::tcp::v4(), server.getIpPort()))),
+		  server(server)
 	{
 		asio::socket_base::reuse_address option(true);
 		acceptor.set_option(option);
@@ -71,9 +72,9 @@ private:
 		if (!error)
 		{
 			printf("New connection from %s\n", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
-			Player::Ptr player = Player::create(newConnection);
+			Player::Ptr player = Player::create(newConnection, server);
 			newConnection->setPlayer(player);
-			Server::instance().addPlayer(player);
+			server.addPlayer(player);
 			newConnection->receive();
 		}
 		start();
@@ -81,6 +82,7 @@ private:
 
 	asio::io_context& io_context;
 	asio::ip::tcp::acceptor acceptor;
+	LobbyServer& server;
 
 	friend super;
 };
@@ -104,17 +106,17 @@ int main(int argc, char *argv[])
 	gateServer->start();
 
 	printf("IWANGO Emulator: Lobby Server by Ioncannon\n");
-	Server& server = Server::instance();
-	server.addGame("Daytona");
-	server.createLobby("2P_Red", 100);
-	server.createLobby("4P_Yellow", 100);
-	server.createLobby("2P_Blue", 100);
-	server.createLobby("2P_Green", 100);
-	server.createLobby("4P_Purple", 100);
-	server.createLobby("4P_Orange", 100);
+	LobbyServer daytonaServer(GameId::Daytona, "DCNet_Daytona");
+	LobbyAcceptor::Ptr daytonaAcceptor = LobbyAcceptor::create(io_context, daytonaServer);
+	daytonaAcceptor->start();
 
-	LobbyServer::Ptr lobbyServer = LobbyServer::create(io_context, 9501);
-	lobbyServer->start();
+	LobbyServer tetrisServer(GameId::Tetris, "DCNet_Tetris");
+	LobbyAcceptor::Ptr tetrisAcceptor = LobbyAcceptor::create(io_context, tetrisServer);
+	tetrisAcceptor->start();
+
+	LobbyServer golfServer(GameId::GolfShiyouyo, "DCNet_Golf_Shiyouyo_2");
+	LobbyAcceptor::Ptr golfAcceptor = LobbyAcceptor::create(io_context, golfServer);
+	golfAcceptor->start();
 
 	io_context.run();
 
