@@ -59,9 +59,7 @@ class Player : public SharedThis<Player>
 {
 public:
 	std::string getIp();
-	uint32_t getIpUint32();
 	std::array<uint8_t, 4> getIpBytes();
-	uint16_t getPort();
 	void disconnect(bool sendDCPacket = true);
 	void setSharedMem(const std::vector<uint8_t>& data);
 	std::vector<uint8_t> getSendDataPacket();

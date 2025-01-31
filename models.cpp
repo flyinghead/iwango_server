@@ -82,31 +82,27 @@ std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
 
 std::string Player::getIp()
 {
-	if (connection == nullptr)
-		return "0.0.0.0";
-	else
-		return connection->getSocket().remote_endpoint().address().to_string();
-}
-uint32_t Player::getIpUint32()
-{
-	if (connection == nullptr)
-		return 0;
-	else
-		return connection->getSocket().remote_endpoint().address().to_v4().to_ulong();
+	if (connection != nullptr)
+	{
+		try {
+			return connection->getSocket().remote_endpoint().address().to_string();
+		} catch (const std::runtime_error& e) {
+			fprintf(stderr, "ERROR: Player::getIp: %s\n", e.what());
+		}
+	}
+	return "0.0.0.0";
 }
 std::array<uint8_t, 4> Player::getIpBytes()
 {
-	if (connection == nullptr)
-		return {};
-	else
-		return connection->getSocket().remote_endpoint().address().to_v4().to_bytes();
-}
-uint16_t Player::getPort()
-{
-	if (connection == nullptr)
-		return 0;
-	else
-		return connection->getSocket().remote_endpoint().port();
+	if (connection != nullptr)
+	{
+		try {
+			return connection->getSocket().remote_endpoint().address().to_v4().to_bytes();
+		} catch (const std::runtime_error& e) {
+			fprintf(stderr, "ERROR: Player::getIpBytes: %s\n", e.what());
+		}
+	}
+	return {};
 }
 
 void Player::disconnect(bool sendDCPacket)
