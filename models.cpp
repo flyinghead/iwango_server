@@ -1,5 +1,6 @@
 #include "models.h"
 #include "lobby_server.h"
+#include "discord.h"
 
 std::vector<LobbyServer *> LobbyServer::servers;
 
@@ -10,13 +11,16 @@ void Lobby::addPlayer(std::shared_ptr<Player> player)
 	// Confirm Join Lobby
 	player->send(0x13, player->fromUtf8(name) + " " + player->fromUtf8(player->name));
 
+	std::vector<std::string> playerNames;
 	// Send player info to all members
 	for (auto& p : members)
 	{
+		playerNames.push_back(p->name);
 		if (p == player)
 			continue;
 		p->send(0x30, player->getSendDataPacket());
 	}
+	discordLobbyJoined(player->gameId, player->name, name, playerNames);
 }
 
 void Lobby::removePlayer(std::shared_ptr<Player> player)
@@ -53,8 +57,12 @@ std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const s
 
 	sstream ss;
 	ss << creator->fromUtf8(name) << ' ' << creator->fromUtf8(creator->name) << ' ' << capacity << " 0 " << gameName;
-	for (auto& p : members)
+	std::vector<std::string> playerNames;
+	for (auto& p : members) {
 		p->send(0x28, ss.str());
+		playerNames.push_back(p->name);
+	}
+	discordGameCreated(creator->gameId, creator->name, name, playerNames);
 
 	return team;
 }
@@ -78,6 +86,11 @@ std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
 		if (team->name == name)
 			return team;
 	return nullptr;
+}
+
+Player::Player(std::shared_ptr<LobbyConnection> connection, LobbyServer& server)
+	: sharedMem(0x1e), gameId(server.getGameId()), server(server), connection(connection)
+{
 }
 
 std::string Player::getIp()

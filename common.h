@@ -5,6 +5,8 @@
 #include <iostream>
 #include <unicode/unistr.h>
 
+std::string getConfig(const std::string& name, const std::string& default_value);
+
 enum class GameId
 {
 	Daytona,

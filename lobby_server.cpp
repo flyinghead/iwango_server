@@ -1,8 +1,12 @@
 #include "lobby_server.h"
 #include "gate_server.h"
 #include "models.h"
+#include "discord.h"
+#include <fstream>
+#include <unordered_map>
 
 static asio::io_context io_context;
+static std::unordered_map<std::string, std::string> Config;
 
 void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 {
@@ -91,6 +95,37 @@ static void breakhandler(int signum) {
 	io_context.stop();
 }
 
+static void loadConfig(const std::string& path)
+{
+	std::filebuf fb;
+	if (!fb.open(path, std::ios::in)) {
+		fprintf(stderr, "ERROR: config file %s not found\n", path.c_str());
+		return;
+	}
+
+	std::istream istream(&fb);
+	std::string line;
+	while (std::getline(istream, line))
+	{
+		if (line.empty() || line[0] == '#')
+			continue;
+		auto pos = line.find_first_of("=:");
+		if (pos != std::string::npos)
+			Config[line.substr(0, pos)] = line.substr(pos + 1);
+		else
+			fprintf(stderr, "ERROR: config file syntax error: %s\n", line.c_str());
+	}
+}
+
+std::string getConfig(const std::string& name, const std::string& default_value)
+{
+	auto it = Config.find(name);
+	if (it == Config.end())
+		return default_value;
+	else
+		return it->second;
+}
+
 int main(int argc, char *argv[])
 {
 	struct sigaction sigact;
@@ -101,20 +136,26 @@ int main(int argc, char *argv[])
 	sigaction(SIGTERM, &sigact, NULL);
 	setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
 
+	loadConfig(argc >= 2 ? argv[1] : "iwango.cfg");
+	setDiscordWebhook(getConfig("DiscordWebhook", ""));
+
 	printf("IWANGO Emulator: Gate Server by Ioncannon\n");
 	GateServer::Ptr gateServer = GateServer::create(io_context, 9500);
 	gateServer->start();
 
 	printf("IWANGO Emulator: Lobby Server by Ioncannon\n");
-	LobbyServer daytonaServer(GameId::Daytona, "DCNet_Daytona");
+	LobbyServer daytonaServer(GameId::Daytona, getConfig("DaytonaServerName", "DCNet_Daytona"));
+	daytonaServer.setMotd(getConfig("DaytonaMOTD", daytonaServer.getMotd()));
 	LobbyAcceptor::Ptr daytonaAcceptor = LobbyAcceptor::create(io_context, daytonaServer);
 	daytonaAcceptor->start();
 
-	LobbyServer tetrisServer(GameId::Tetris, "DCNet_Tetris");
+	LobbyServer tetrisServer(GameId::Tetris, getConfig("TetrisServerName", "DCNet_Tetris"));
+	tetrisServer.setMotd(getConfig("TetrisMOTD", tetrisServer.getMotd()));
 	LobbyAcceptor::Ptr tetrisAcceptor = LobbyAcceptor::create(io_context, tetrisServer);
 	tetrisAcceptor->start();
 
-	LobbyServer golfServer(GameId::GolfShiyouyo, "DCNet_Golf_Shiyouyo_2");
+	LobbyServer golfServer(GameId::GolfShiyouyo, getConfig("GolfShiyou2ServerName", "DCNet_Golf_Shiyouyo_2"));
+	golfServer.setMotd(getConfig("GolfShiyou2MOTD", golfServer.getMotd()));
 	LobbyAcceptor::Ptr golfAcceptor = LobbyAcceptor::create(io_context, golfServer);
 	golfAcceptor->start();
 

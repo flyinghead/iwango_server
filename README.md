@@ -13,3 +13,6 @@ A server emulator for the IWANGO lobby suite for Dreamcast.
 * Rune Jade
 * Sega Tetris
 * Yakyuu Team de Asobou Net!
+
+C++ rewrite of the original server by Ioncannon:
+[https://github.com/filipmaj1/IWANGO-Server-Emulator](https://github.com/filipmaj1/IWANGO-Server-Emulator)

@@ -107,12 +107,11 @@ public:
 	std::vector<uint8_t> sharedMem;
 	Lobby::Ptr lobby;
 	std::shared_ptr<Team> team;
-	GameId gameId {};
+	GameId gameId;
 	LobbyServer& server;
 
 private:
-	Player(std::shared_ptr<LobbyConnection> connection, LobbyServer& server)
-		: sharedMem(0x1e), server(server), connection(connection) {}
+	Player(std::shared_ptr<LobbyConnection> connection, LobbyServer& server);
 	int send(uint16_t opcode, const uint8_t *payload, unsigned length);
 	std::vector<uint8_t> makePacket(uint16_t opcode, const uint8_t *payload, unsigned length);
 
@@ -324,6 +323,13 @@ public:
 		}
 	}
 
+	const std::string& getMotd() const {
+		return motd;
+	}
+	void setMotd(const std::string& motd) {
+		this->motd = motd;
+	}
+
 	static LobbyServer *getServer(GameId gameId)
 	{
 		for (LobbyServer *server : servers)
@@ -335,7 +341,8 @@ public:
 
 private:
 	GameId gameId;
-	std::string name = "IWANGO_Server_1";	// TODO config
+	std::string name = "IWANGO_Server_1";
+	std::string motd = "Welcome to IWANGO Emulator by Ioncannon";
 	std::vector<Player::Ptr> players;
 	std::vector<Lobby::Ptr> lobbies;
 	static std::vector<LobbyServer *> servers;

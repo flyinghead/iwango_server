@@ -56,6 +56,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	    player->disconnect(false);
 		return;
 	}
+	// Daytona (US) allowed characters (when searching): A-Za-z0-9_-
 
 	// Is this handle already in the server? Handle is used as a key and HAS to be unique.
 	// FIXME JP users will all connect with 'flycast1'
@@ -99,7 +100,7 @@ static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const
 	// 4	:1
 	// 5	:0 or :1 (handle index?)
 	player->send(0x0C, "LOB 999 999 AAA AAA");
-	player->send(0x0A, "Welcome to IWANGO Emulator by Ioncannon");	// TODO config
+	player->send(0x0A, player->server.getMotd());
 	player->send(0xE1);	// Ext MeM ready?
 }
 
@@ -342,7 +343,6 @@ static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const
 	}
 	player->send(0xC9, "1");	// FIXME golf seems to think it's found, but garbage name(?)
 								// FIXME search and say says failed to send message although the player is found (but self so might be the issue)
-								// fixed: tetris search doesn't seem to work either. Server name was invalid (Daytona_USA_Emu_#1)
 }
 
 static void nullCommand(Player::Ptr, const std::vector<uint8_t>&, const std::string&) {
@@ -387,14 +387,8 @@ void PacketProcessor::handlePacket(Player::Ptr player, uint16_t opcode, const st
 	std::vector<std::string> split = splitString(payloadAsString, ' ');
 
 	if (CommandHandlers.count((CLIOpcode)opcode) != 0)
-	{
-#ifndef NDEBUG
-		printf("Received: 0x%02x -> %s\n", opcode, payloadAsString.c_str());
-#endif
 		CommandHandlers[(CLIOpcode)opcode](player, payload, payloadAsString);
-	}
-	else {
+	else
 		printf("Received unknown opcode: 0x%02x -> %s\n", opcode, payloadAsString.c_str());
-	}
 }
 

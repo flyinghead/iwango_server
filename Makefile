@@ -1,15 +1,15 @@
 #
-# dependencies: libasio-dev libicu-dev
+# dependencies: libasio-dev libicu-dev libcurl-dev
 #
 CXXFLAGS=-std=c++17 -O3 -Wall # -fsanitize=address -static-libasan
-DEPS=asio.h database.h models.h lobby_server.h gate_server.h common.h vms.h sega_crypto.h
+DEPS=asio.h database.h models.h lobby_server.h gate_server.h common.h vms.h sega_crypto.h json.hpp discord.h
 INSTALL_DIR=/usr/local
 USER=dcnet
 
 all: iwango_server keycutter keycutter.cgi
 
-iwango_server: lobby_server.o models.o packet_processor.o gate_server.o 
-	$(CXX) $(CXXFLAGS) -o $@ lobby_server.o models.o packet_processor.o gate_server.o -lpthread -licuuc
+iwango_server: lobby_server.o models.o packet_processor.o gate_server.o discord.o
+	$(CXX) $(CXXFLAGS) -o $@ lobby_server.o models.o packet_processor.o gate_server.o discord.o -lpthread -licuuc -lcurl
 
 keycutter: keycutter.o sega_crypto.o
 	$(CXX) $(CXXFLAGS) -o keycutter keycutter.o sega_crypto.o
