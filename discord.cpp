@@ -30,6 +30,8 @@ struct {
 	{ "Daytona USA",				"https://dcnet.flyca.st/gamepic/daytona.jpg" },
 	{ "Sega Tetris",				"https://dcnet.flyca.st/gamepic/segatetris.jpg" },
 	{ "Golf Shiyou Yo 2",			"https://dcnet.flyca.st/gamepic/golfshiyou2.jpg" },
+	{ "Aero Dancing i",				"https://dcnet.flyca.st/gamepic/aerodancing.jpg" },
+	{ "Hundred Swords",				"https://dcnet.flyca.st/gamepic/hundredswords.jpg" },
 };
 
 class Notif
@@ -79,7 +81,7 @@ static void postWebhook(const Notif& notif)
 	CURLcode res;
 	curl_easy_setopt(curl, CURLOPT_URL, DiscordWebhook.c_str());
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "DCNet-DiscordWebhook");
-	curl_slist *headers = curl_slist_append(NULL, "Content-Type: application/json");
+	curl_slist *headers = curl_slist_append(nullptr, "Content-Type: application/json");
 	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
 	std::string json = notif.to_json();
@@ -107,7 +109,7 @@ void setDiscordWebhook(const std::string& url) {
 void discordLobbyJoined(GameId gameId, const std::string& username, const std::string& lobbyName, const std::vector<std::string>& playerList)
 {
 	Notif notif(gameId);
-	notif.content = "Player **" + username + "** joined lobby ***" + lobbyName + "***";
+	notif.content = "Player **" + username + "** joined lobby **" + lobbyName + "**";
 	notif.embed.title = "Lobby Players";
 	for (const auto& player : playerList)
 		notif.embed.text += player + "\n";
@@ -117,7 +119,7 @@ void discordLobbyJoined(GameId gameId, const std::string& username, const std::s
 void discordGameCreated(GameId gameId, const std::string& username, const std::string& gameName, const std::vector<std::string>& playerList)
 {
 	Notif notif(gameId);
-	notif.content = "Player **" + username + "** created team ***" + gameName + "***";
+	notif.content = "Player **" + username + "** created team **" + gameName + "**";
 	notif.embed.title = "Lobby Players";
 	for (const auto& player : playerList)
 		notif.embed.text += player + "\n";

@@ -5,6 +5,7 @@
 #include "models.h"
 #include <stdio.h>
 #include <vector>
+#include <algorithm>
 #include <signal.h>
 
 using sstream = std::stringstream;
@@ -133,39 +134,52 @@ private:
 				return;
 			}
 			GameId gameId = identifyGame(split[2]);
-			LobbyServer *server = LobbyServer::getServer(gameId);
 
-			// TODO golf wants max 9 chars for handle. cause of non connection for player 2?
-			// tetris max 8 when typing (but no issue with generated flycast1_1)
-			std::string daytonaHash = split[1];
-			std::string handleName;
-			for (int i = 0; i < 100 && server != nullptr; i++)
+			std::string userName = split[1];
+			if (userName == "flycast1" || userName == "flycast2" || userName == "dream")
 			{
-				if (daytonaHash == "flycast1" || daytonaHash == "flycast2")
+				// Forcibly assign a 'PlayerN' handle
+				std::string handleName;
+				LobbyServer *server = LobbyServer::getServer(gameId);
+				for (int i = 1; i < 100 && server != nullptr; i++)
 				{
-					handleName = "Player";
-					if (i == 0)
-						i = 1;
+					handleName =  "Player" + std::to_string(i);
+					if (server->getPlayer(handleName) == nullptr)
+						break;
+					handleName = "";
 				}
-				else {
-					handleName = daytonaHash;
-				}
-				if (i > 0)
-					handleName += std::to_string(i);
+				if (!handleName.empty())
+					sendPacket(0x3F2, "1" + utf8ToSjis(handleName, gameId == GameId::GolfShiyouyo));
+				else
+					sendPacket(0x3F2);
+			}
+			else
+			{
+				std::string handleName = userName;
+				std::transform(handleName.begin(), handleName.end(), handleName.begin(), [](char c) {
+					if (c == ' ' || c == '#' || c == '&' || c == '*' || c == '=')
+						return '_';
+					else
+						return c;
+				});
+				// IWANGO max handle length is 19 chars. But Golf Shiyou 2 only accepts
+				// full-width shift-JIS chars which take up 2 bytes each.
+				// Hundred Swords UI only has space for 6 chars but no other issue.
+				unsigned maxLength = gameId == GameId::GolfShiyouyo ? 9 : 19;
 				if (gameId == GameId::Daytona)
-					handleName += ".us";
-				if (server->getPlayer(handleName) == nullptr)
-					break;
-				handleName = "";
+					handleName = handleName.substr(0, maxLength - 3) + ".us";
+				else
+					handleName = handleName.substr(0, maxLength);
+				std::vector<std::string> handles = getHandles(gameId, userName, handleName);
+				sstream ss;
+				for (unsigned i = 0; i < handles.size(); i++)
+				{
+					if (i > 0)
+						ss << ' ';
+					ss << (i + 1) << utf8ToSjis(handles[i], gameId == GameId::GolfShiyouyo);
+				}
+				sendPacket(0x3F2, ss.str());
 			}
-			if (handleName.empty()) {
-				sendPacket(ERROR1);
-				return;
-			}
-			// TODO database
-
-			std::string payload = "1" + utf8ToSjis(handleName, gameId == GameId::GolfShiyouyo);
-			sendPacket(0x3F2, payload);
 		}
 		else if (split[0 ]== "HANDLE_ADD")
 		{
@@ -174,18 +188,23 @@ private:
 				return;
 			}
 
-			std::string daytonaHash = split[1];
+			std::string userName = split[1];
+			if (userName == "flycast1" || userName == "flycast2" || userName == "dream") {
+				sendPacket(NAME_IN_USE1);
+				return;
+			}
 			GameId gameId = identifyGame(split[2]);
-			//int handleIndx = atoi(split[3].c_str());
+			int handleIndx = atoi(split[3].c_str());
 			std::string handlename = sjisToUtf8(split[4]);
 
-			int result = database.createHandle(daytonaHash, handlename);
-			if (result == 1)
-				sendPacket(0x3F3, "1 " + utf8ToSjis(handlename, gameId == GameId::GolfShiyouyo));
-			else if (result == 0)
-				sendPacket(ERROR1);
-			else if (result == -1)
+			try {
+				if (createHandle(gameId, userName, handleIndx, handlename))
+					sendPacket(0x3F3, "1 " + utf8ToSjis(handlename, gameId == GameId::GolfShiyouyo));
+				else
+					sendPacket(ERROR1);
+			} catch (const AlreadyExistsException&) {
 				sendPacket(NAME_IN_USE1);
+			}
 		}
 		else if (split[0] == "HANDLE_REPLACE")
 		{
@@ -194,18 +213,23 @@ private:
 				return;
 			}
 
-			std::string daytonaHash = split[1];
+			std::string userName = split[1];
+			if (userName == "flycast1" || userName == "flycast2" || userName == "dream") {
+				sendPacket(NAME_IN_USE1);
+				return;
+			}
 			GameId gameId = identifyGame(split[2]);
 			int handleIndx = atoi(split[3].c_str());
 			std::string newHandleName = sjisToUtf8(split[4]);
 
-			int result = database.replaceHandle(daytonaHash, handleIndx, newHandleName);
-			if (result == 0)
-				sendPacket(0x3F4, "1 " + utf8ToSjis(newHandleName, gameId == GameId::GolfShiyouyo));
-			else if (result == 0)
-				sendPacket(ERROR1);
-			else if (result == -1)
+			try {
+				if (replaceHandle(gameId, userName, handleIndx, newHandleName))
+					sendPacket(0x3F4, "1 " + utf8ToSjis(newHandleName, gameId == GameId::GolfShiyouyo));
+				else
+					sendPacket(ERROR1);
+			} catch (const AlreadyExistsException&) {
 				sendPacket(NAME_IN_USE1);
+			}
 		}
 		else if (split[0] == "HANDLE_DELETE")
 		{
@@ -214,10 +238,11 @@ private:
 				return;
 			}
 
-			std::string daytonaHash = split[1];
+			std::string userName = split[1];
+			GameId gameId = identifyGame(split[2]);
 			int handleIndx = atoi(split[3].c_str());
 
-			if (database.deleteHandle(daytonaHash, handleIndx))
+			if (deleteHandle(gameId, userName, handleIndx))
 				sendPacket(0x3F5);
 			else
 				sendPacket(ERROR1);

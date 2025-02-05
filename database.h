@@ -1,33 +1,35 @@
+/*
+    Copyright (C) 2025  Flyinghead
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 #pragma once
+#include "common.h"
 #include <string>
 #include <vector>
 
-class Database
+class AlreadyExistsException : std::runtime_error
 {
 public:
-	std::string iwangoGetVerification(const std::string& daytonaHash) {
-		return "joejoe";
-	}
-	int createHandle(const std::string& daytonaHash, const std::string& handlename) {
-		return 1;
-	}
-	int replaceHandle(const std::string& daytonaHash, int handleIndx, const std::string& newHandleName) {
-		return 1;
-	}
-	bool deleteHandle(const std::string& daytonaHash, int handleIndx) {
-		return true;
-	}
-	std::string dreamPipeGetVerification(const std::string& daytonaHash) {
-		return "joejoe2";
-	}
-	bool addUserIfMissing(const std::string& username, const std::string& daytonaHash) {
-		return true;
-	}
-	const std::vector<std::string>& getHandles(const std::string& username) {
-		return handles;
-	}
-
-private:
-	std::vector<std::string> handles { "joejoe", "jack", "william" };
+	AlreadyExistsException() : std::runtime_error("This name already exists") {}
 };
-static Database database;
+
+void setDatabasePath(const std::string& databasePath);
+bool createHandle(GameId gameId, const std::string& user, int index, const std::string& handle);
+bool replaceHandle(GameId gameId, const std::string& user, int index, const std::string& handle);
+bool deleteHandle(GameId gameId, const std::string& user, int index);
+std::vector<std::string> getHandles(GameId gameId, const std::string& user, const std::string& defaultHandle);
+
+std::vector<uint8_t> getExtraUserMem(GameId gameId, const std::string& user);
+void updateExtraUserMem(GameId gameId, const std::string& user, const uint8_t *data, int offset, int size);

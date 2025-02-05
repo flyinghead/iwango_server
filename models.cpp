@@ -1,6 +1,7 @@
 #include "models.h"
 #include "lobby_server.h"
 #include "discord.h"
+#include "database.h"
 
 std::vector<LobbyServer *> LobbyServer::servers;
 
@@ -91,6 +92,12 @@ std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
 Player::Player(std::shared_ptr<LobbyConnection> connection, LobbyServer& server)
 	: sharedMem(0x1e), gameId(server.getGameId()), server(server), connection(connection)
 {
+}
+
+void Player::login(const std::string& name)
+{
+	this->name = name;
+	extraUserMem = getExtraUserMem(gameId, name);
 }
 
 std::string Player::getIp()
@@ -230,15 +237,55 @@ void Player::leaveTeam()
 	}
 }
 
-void Player::sendExtraMem(const uint8_t* extraMem, int offset, int length)
+void Player::getExtraMem(const std::string& playerName, int offset, int length)
 {
-	std::vector<uint8_t> payload(length + 2);
-	*(uint16_t *)&payload[0] = (uint16_t)length;
-	memcpy(&payload[2], extraMem + offset, length);
-
+	Player::Ptr player = server.getPlayer(playerName);
+	if (player == nullptr) {
+		fprintf(stderr, "Player::getExtraMem: user %s not found\n", playerName.c_str());
+		return;
+	}
+	if ((int)player->extraUserMem.size() < offset + length)
+		player->extraUserMem.resize(offset + length);
 	send(0x50);
-	send(0x51, payload);
+	for (uint16_t i = 0; length > 0 && offset < (int)player->extraUserMem.size(); i++)
+	{
+		int chunksz = std::min(length, 200);
+		std::vector<uint8_t> payload(2 + chunksz);
+		*(uint16_t *)&payload[0] = i;
+		memcpy(&payload[2], &player->extraUserMem[offset], chunksz);
+		length -= chunksz;
+		offset += chunksz;
+		send(0x51, payload);
+	}
 	send(0x52);
+}
+
+void Player::startExtraMem(int offset, int length)
+{
+	assert(offset >= 0);
+	assert(length > 0);
+	assert(offset + length <= 0x2000);
+	extraMemOffset = offset;
+	extraMemEnd = offset + length;
+	if (extraMemEnd >= (int)extraUserMem.size())
+		extraUserMem.resize(extraMemEnd);
+	send(0x4F);
+}
+void Player::setExtraMem(int index, const uint8_t *data, int size)
+{
+	if (extraMemEnd == 0)
+		return;
+	memcpy(extraUserMem.data() + extraMemOffset, data, size);
+	updateExtraUserMem(gameId, name, data, extraMemOffset, size);
+	extraMemOffset += size;
+	if (extraMemOffset >= extraMemEnd)
+		extraMemEnd = 0;
+	send(0x4F);
+}
+void Player::endExtraMem()
+{
+	extraMemEnd = 0;
+	send(0x4F);
 }
 
 int Player::send(uint16_t opcode, const uint8_t *payload, unsigned length)

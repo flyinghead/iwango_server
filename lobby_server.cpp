@@ -2,6 +2,7 @@
 #include "gate_server.h"
 #include "models.h"
 #include "discord.h"
+#include "database.h"
 #include <fstream>
 #include <unordered_map>
 
@@ -12,7 +13,7 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 {
 	if (ec || len == 0)
 	{
-		if (ec && ec != asio::error::eof)
+		if (ec && ec != asio::error::eof && ec != asio::error::operation_aborted)
 			fprintf(stderr, "ERROR: onReceive: %s\n", ec.message().c_str());
 		else
 			printf("Connection closed\n");
@@ -26,9 +27,22 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 	//uint16_t unk2 = *(uint16_t *)&recvBuffer[6];
 	uint16_t opcode = *(uint16_t *)&recvBuffer[8];
 	std::vector<uint8_t> payload(&recvBuffer[10], &recvBuffer[len]);
-	printf("lobby: Request[%d]: %04x [%s]\n", sequence, opcode, std::string((char *)&payload[0], payload.size()).c_str());
+	std::string s((char *)&payload[0], payload.size());
+	printf("lobby: Request[%d]: %04x ", sequence, opcode);
+	if (strlen(s.c_str()) != s.length())
+	{
+		printf("[");
+		for (uint8_t b : payload)
+			printf("%02x ", b);
+		printf("]\n");
+	}
+	else {
+		printf("[%s]\n", sjisToUtf8(s).c_str());
+	}
 	player->receive(opcode, payload);
 	receive();
+	timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(60));
+	timer.async_wait(std::bind(&LobbyConnection::onTimeOut, shared_from_this(), asio::placeholders::error));
 }
 
 void LobbyConnection::onSent(const std::error_code& ec, size_t len)
@@ -46,6 +60,19 @@ void LobbyConnection::onSent(const std::error_code& ec, size_t len)
 	if (sendIdx != 0) {
 		memmove(&sendBuffer[0], &sendBuffer[len], sendIdx);
 		send();
+	}
+}
+
+void LobbyConnection::onTimeOut(const std::error_code& ec)
+{
+	if (ec) {
+		if (ec != asio::error::operation_aborted)
+			fprintf(stderr, "ERROR: onTimeout: %s\n", ec.message().c_str());
+	}
+	else if (player) {
+		printf("Player %s time out\n", player->name.c_str());
+		auto lplayer = player;
+		lplayer->disconnect(false);
 	}
 }
 
@@ -132,12 +159,13 @@ int main(int argc, char *argv[])
 	memset(&sigact, 0, sizeof(sigact));
 	sigact.sa_handler = breakhandler;
 	sigact.sa_flags = SA_RESTART;
-	sigaction(SIGINT, &sigact, NULL);
-	sigaction(SIGTERM, &sigact, NULL);
+	sigaction(SIGINT, &sigact, nullptr);
+	sigaction(SIGTERM, &sigact, nullptr);
 	setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
 
 	loadConfig(argc >= 2 ? argv[1] : "iwango.cfg");
 	setDiscordWebhook(getConfig("DiscordWebhook", ""));
+	setDatabasePath(getConfig("DatabasePath", ""));
 
 	printf("IWANGO Emulator: Gate Server by Ioncannon\n");
 	GateServer::Ptr gateServer = GateServer::create(io_context, 9500);
@@ -158,6 +186,16 @@ int main(int argc, char *argv[])
 	golfServer.setMotd(getConfig("GolfShiyou2MOTD", golfServer.getMotd()));
 	LobbyAcceptor::Ptr golfAcceptor = LobbyAcceptor::create(io_context, golfServer);
 	golfAcceptor->start();
+
+	LobbyServer aeroServer(GameId::AeroDancing, getConfig("AeroDancingServerName", "DCNet_Aero_Dancing"));
+	aeroServer.setMotd(getConfig("AeroDancingMOTD", aeroServer.getMotd()));
+	LobbyAcceptor::Ptr aeroAcceptor = LobbyAcceptor::create(io_context, aeroServer);
+	aeroAcceptor->start();
+
+	LobbyServer swordsServer(GameId::HundredSwords, getConfig("HundredSwordsServerName", "DCNet"));
+	swordsServer.setMotd(getConfig("HundredSwordsMOTD", swordsServer.getMotd()));
+	LobbyAcceptor::Ptr swordsAcceptor = LobbyAcceptor::create(io_context, swordsServer);
+	swordsAcceptor->start();
 
 	io_context.run();
 

@@ -58,6 +58,7 @@ private:
 class Player : public SharedThis<Player>
 {
 public:
+	void login(const std::string& name);
 	std::string getIp();
 	std::array<uint8_t, 4> getIpBytes();
 	void disconnect(bool sendDCPacket = true);
@@ -90,7 +91,11 @@ public:
 	void joinTeam(const std::string& name);
 	void leaveTeam();
 
-	void sendExtraMem(const uint8_t* extraMem, int offset, int length);
+	void getExtraMem(const std::string& playerName, int offset, int length);
+	void startExtraMem(int offset, int length);
+	void setExtraMem(int index, const uint8_t *data, int size);
+	void endExtraMem();
+
 	int send(uint16_t opcode, const std::string& payload = {}) {
 		//printf("send: %04x [%s]\n", opcode, payload.c_str());
 		return send(opcode, (const uint8_t *)&payload[0], payload.length());
@@ -118,6 +123,9 @@ private:
 	bool disconnected = false;
 	std::shared_ptr<LobbyConnection> connection;
 	std::vector<uint8_t> lastRecvPacket;
+	std::vector<uint8_t> extraUserMem;
+	int extraMemOffset = 0;
+	int extraMemEnd = 0;
 	friend super;
 };
 
@@ -187,7 +195,7 @@ public:
 
 	void sendGameServer(Player::Ptr p) {
 		for (auto& player : members)
-			player->send(0x3d, "192.168.1.31 9501");	// FIXME used by golf.
+			player->send(0x3d, "172.20.100.100 9503");	// FIXME?
 	}
 
 	void launchGame(Player::Ptr p)
@@ -225,12 +233,29 @@ public:
 		if (!name.empty())
 			this->name = name;
 		servers.push_back(this);
-		createLobby("2P_Red", 100);
-		createLobby("4P_Yellow", 100);
-		createLobby("2P_Blue", 100);
-		createLobby("2P_Green", 100);
-		createLobby("4P_Purple", 100);
-		createLobby("4P_Orange", 100);
+		switch (gameId)
+		{
+		case GameId::AeroDancing:
+			createLobby("QLADI", 100);
+			createLobby("NLADI", 100);
+			break;
+		case GameId::HundredSwords:
+			createLobby("Red", 100);
+			createLobby("Yellow", 100);
+			createLobby("Blue", 100);
+			createLobby("Green", 100);
+			createLobby("Purple", 100);
+			createLobby("Orange", 100);
+			break;
+		default:
+			createLobby("2P_Red", 100);
+			createLobby("4P_Yellow", 100);
+			createLobby("2P_Blue", 100);
+			createLobby("2P_Green", 100);
+			createLobby("4P_Purple", 100);
+			createLobby("4P_Orange", 100);
+			break;
+		}
 	}
 
 	Lobby::Ptr createLobby(const std::string& name, unsigned capacity)
@@ -308,6 +333,8 @@ public:
 		case GameId::Daytona: return 9501;
 		case GameId::Tetris: return 9502;
 		case GameId::GolfShiyouyo: return 9503;
+		case GameId::AeroDancing: return 9504;
+		case GameId::HundredSwords: return 9505;
 		default: assert(false); return 0;
 		}
 	}
@@ -319,6 +346,8 @@ public:
 		case GameId::Daytona: return "Daytona";
 		case GameId::Tetris: return "Tetris";
 		case GameId::GolfShiyouyo: return "Golf";
+		case GameId::AeroDancing: return "T-6807M";
+		case GameId::HundredSwords: return "Hundred";
 		default: assert(false); return "???";
 		}
 	}

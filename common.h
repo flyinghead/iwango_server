@@ -12,7 +12,10 @@ enum class GameId
 	Daytona,
 	DaytonaJP,
 	Tetris,
-	GolfShiyouyo
+	GolfShiyouyo,
+	AeroDancing,
+	HundredSwords,
+	CuldCept,
 };
 
 inline static GameId identifyGame(const std::string& gameId)
@@ -23,6 +26,12 @@ inline static GameId identifyGame(const std::string& gameId)
 		return GameId::Tetris;
 	if (gameId == "T00009T0000910430101")
 		return GameId::GolfShiyouyo;
+	if (gameId == "F00005T0000510410101")
+		return GameId::AeroDancing;
+	if (gameId == "F00001S0000110490101")
+		return GameId::HundredSwords;
+	if (gameId == "T00011T0001110500101")
+		return GameId::CuldCept;
 	return GameId::Daytona;
 }
 
@@ -50,7 +59,7 @@ inline static std::string utf8ToSjis(const std::string& value, bool fullWidth)
 			if (src[i] > ' ' && src[i] <= '~')
 				src.setCharAt(i, (char16_t)(src[i] - 0x20 + 0xFF00));
     }
-    int length = src.extract(0, srclen, NULL, "shift_jis");
+    int length = src.extract(0, srclen, nullptr, "shift_jis");
 
     std::vector<char> result(length + 1);
     src.extract(0, srclen, &result[0], "shift_jis");
@@ -66,7 +75,7 @@ inline static std::string sjisToUtf8(const std::string& value)
     for (int i = 0; i < srclen; i++)
     	if (src[i] > 0xFF00 && src[i] <= 0xFF5E)
     		src.setCharAt(i, (char16_t)(src[i] - 0xFF00 + 0x20));
-    int length = src.extract(0, srclen, NULL, "utf8");
+    int length = src.extract(0, srclen, nullptr, "utf8");
 
     std::vector<char> result(length + 1);
     src.extract(0, srclen, &result[0], "utf8");

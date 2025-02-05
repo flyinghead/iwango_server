@@ -82,9 +82,8 @@ int main(int argc, char *argv[])
 	if (file.empty()) {
 		// Redirect to .VMI file
 		std::cout << "Location: /" + urlEncode(username) + "/" + std::string(KEY_FILENAME) + ".VMI\n\n";
-		return 0;
 	}
-	if (file == vmi)
+	else if (file == vmi)
 	{
 		// Deliver .VMI file
 		std::vector<uint8_t> data = generateVMI(VMS_SIZE);

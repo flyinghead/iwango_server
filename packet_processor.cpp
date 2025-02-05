@@ -19,35 +19,39 @@ enum CLIOpcode : uint16_t
 	PING = 0x0A,
 	SEARCH = 0x0B,
 	GET_LICENSE = 0x0C,
-	// TODO tetris,golf lobby: Request[41]: 000e []
+	RECONNECT = 0x0D,
+	LAUNCH_GAME_ACK = 0x0E,
 	GET_TEAMS = 0x0F,
 	REFRESH_PLAYERS = 0x10,
 	CHAT_LOBBY = 0x11,
 	SHAREDMEM_PLAYER = 0x1B,
-	// TODO tetris lobby: Request[51]: 001c []
-	// TODO tetris lobby: Request[54]: 001d []
+	// TODO tetris: 001c []	SendWin
+	// TODO tetris: 001d []	SendLoose
 	SHAREDMEM_TEAM = 0x20,
 	LEAVE_TEAM = 0x21,
-	// TODO tetris,golf 0x28 (no args)
-	GET_EXTRAUSERMEM = 0x29,
-	REGIST_EXTRAUSERMEM_START = 0x2A,
-	REGIST_EXTRAUSERMEM_TRANSFER = 0x2B,	// TODO golf seems to save stuff like friends. Need db
-	REGIST_EXTRAUSERMEM_END = 0x2C,
-	RECONNECT = 0x0D,
 	LAUNCH_REQUEST = 0x22,
-	LAUNCH_GAME = 0x65,
-	REFRESH_USERS = 0x67,
 	CHAT_TEAM = 0x23,
 	CREATE_TEAM = 0x24,
 	JOIN_TEAM = 0x25,
-	LEAVE_LOBBY = 0x3C
+	// TODO SendCTCPMessage aero dancing: 0x26 -> Player1 Player2 CRI_LBY:1000    (match request)
+	//                           opponent source      or 2000, 2001
+	SEND_CTCPMSG = 0x26,
+	EXTRAUSERMEM_ACK = 0x28,
+	GET_EXTRAUSERMEM = 0x29,
+	REGIST_EXTRAUSERMEM_START = 0x2A,
+	REGIST_EXTRAUSERMEM_TRANSFER = 0x2B,
+	REGIST_EXTRAUSERMEM_END = 0x2C,
+	LEAVE_LOBBY = 0x3C,
+	JOIN_GROUP = 0x3F,
+	LAUNCH_GAME = 0x65,
+	REFRESH_USERS = 0x67,
 };
 
 static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	player->name = player->toUtf8(split[0]);
-	if (player->name.empty())
+	std::string userName = player->toUtf8(split[0]);
+	if (userName.empty())
 	{
 		// FIXME not working no matter what I send...
 		player->send(0x03, "Empty handle");
@@ -56,11 +60,11 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	    player->disconnect(false);
 		return;
 	}
+	player->login(userName);
 	// Daytona (US) allowed characters (when searching): A-Za-z0-9_-
 
 	// Is this handle already in the server? Handle is used as a key and HAS to be unique.
-	// FIXME JP users will all connect with 'flycast1'
-	Player::Ptr exists = player->server.getPlayer(player->name, player);
+	Player::Ptr exists = player->server.getPlayer(userName, player);
 	if (exists != nullptr) {
 		exists->name = "";
 		exists->disconnect();
@@ -141,6 +145,8 @@ static void refreshLobbiesCommand(Player::Ptr player, const std::vector<uint8_t>
 
 static void createOrJoinLobby(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
+	// name capacity [type]
+	// types: RRT, GROUP, ARCADE, TOURNAMENT
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	if (split.size() != 2) {
 		fprintf(stderr, "ENTR_LOBBY: bad arg count %zd\n", split.size());
@@ -235,23 +241,36 @@ static void getExtraUserMem(Player::Ptr player, const std::vector<uint8_t>&, con
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	if (split.size() == 3)
 	{
+		std::string playerName = player->toUtf8(split[0]);
+		int offset = atoi(split[1].c_str());
+		int length = atoi(split[2].c_str());
+		player->getExtraMem(playerName, offset, length);
+		/* tetris
 		uint8_t mem[] {
 				0x52, 0x45, 0x47, 0x41, 0x54, 0x45, 0x54, 0x52, 0x49, 0x53, 0x20, 0x31, 0x2E, 0x30, 0x30, 0x00, // SEGATETRIS 1.00
 				0x0C, 0x02, 0x02, 0x00, 0x01, 0x00, 0x04, 0x00, 0x02, 0x00, 0x00, 0x00
 		};
-		//std::string& userName = split[0];
-		int offset = std::clamp<int>(atoi(split[1].c_str()), 0, sizeof(mem));
-		int length = std::clamp<int>(atoi(split[2].c_str()), 0, sizeof(mem) - offset);
-
-		player->sendExtraMem(mem, offset, length);
+		*/
 	}
 	else {
 		player->disconnect();
 	}
 }
 
-static void registerExtraUserMem(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
-	player->send(0x4F);
+static void registerExtraUserMemStart(Player::Ptr player, const std::vector<uint8_t>& data, const std::string&)
+{
+	if (data.size() == 8)
+	{
+		int offset = *(uint32_t *)&data[0];
+		int length = *(uint16_t *)&data[4];
+		player->startExtraMem(offset, length);
+	}
+}
+static void registerExtraUserMemData(Player::Ptr player, const std::vector<uint8_t>&data, const std::string&) {
+	player->setExtraMem(*(uint16_t *)&data[0], &data[2], data.size() - 2);
+}
+static void registerExtraUserMemEnd(Player::Ptr player, const std::vector<uint8_t>&, const std::string&) {
+	player->endExtraMem();
 }
 
 static void chatLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
@@ -310,6 +329,15 @@ static std::vector<uint8_t> test(int num)
 	sharedMem[12] = 0xFF;
 	sharedMem[16] = 0xFF;
 	sharedMem[20] = 0xFF;
+	// iwengine.dll:
+	// 0	ignored
+	// '*'	flags |= 0x20
+	// AAAn	player name
+	// 0 (int) player flags
+	// 0	ignored
+	// 0	ignored
+	// Looks like the sharedMemData should start with 0 or 1 (byte) to indicate its presence so total shared mem len is 1 or 0x1e + 1
+	// also expects 4 additional at the end -> Player.field_0x4c
 	std::vector<uint8_t> data1 = Packet::createSharedMemPacket(sharedMem, "0 *AAA" + std::to_string(num) + " 0 0 0");
 	std::vector<uint8_t> testdata(data1.size() + 4);
 	memcpy(&testdata[0], &data1[0], data1.size());
@@ -345,6 +373,20 @@ static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const
 								// FIXME search and say says failed to send message although the player is found (but self so might be the issue)
 }
 
+static void sendCTCPMessage(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
+{
+	std::vector<std::string> split = splitString(dataAsString, ' ');
+	if (split.size() < 3)
+		return;
+	std::string opponentName = player->toUtf8(split[0]);
+	Player::Ptr opponent = player->server.getPlayer(opponentName);
+	// TODO
+}
+
+static void logData(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
+	player->send(0xcf);
+}
+
 static void nullCommand(Player::Ptr, const std::vector<uint8_t>&, const std::string&) {
 }
 
@@ -361,9 +403,9 @@ static std::unordered_map<CLIOpcode, CommandHandler> CommandHandlers = {
 		{ JOIN_TEAM, joinTeamCommand },
 		{ LEAVE_TEAM, leaveTeamCommand },
 		{ GET_EXTRAUSERMEM,  getExtraUserMem },
-		{ REGIST_EXTRAUSERMEM_START, registerExtraUserMem },
-		{ REGIST_EXTRAUSERMEM_TRANSFER, registerExtraUserMem },
-		{ REGIST_EXTRAUSERMEM_END, registerExtraUserMem },
+		{ REGIST_EXTRAUSERMEM_START, registerExtraUserMemStart },
+		{ REGIST_EXTRAUSERMEM_TRANSFER, registerExtraUserMemData },
+		{ REGIST_EXTRAUSERMEM_END, registerExtraUserMemEnd },
 		{ GET_GAMES, refreshGamesCommand },
 		{ SELECT_GAME, selectGameCommand },
 		{ GET_LICENSE, getLicenseCommand },
@@ -378,12 +420,15 @@ static std::unordered_map<CLIOpcode, CommandHandler> CommandHandlers = {
 		{ REFRESH_USERS, refreshUsersCommand },
 		{ RECONNECT, reconnectCommand },
 		{ SEARCH, searchCommand },
-		{ SEND_LOG, nullCommand },
+		{ SEND_LOG, logData },
+		{ SEND_CTCPMSG, sendCTCPMessage },
+		{ EXTRAUSERMEM_ACK, nullCommand },
+		{ LAUNCH_GAME_ACK, nullCommand },
 };
 
 void PacketProcessor::handlePacket(Player::Ptr player, uint16_t opcode, const std::vector<uint8_t>& payload)
 {
-	std::string payloadAsString = std::string((char *)&payload[0], (char *)&payload[payload.size()]);
+	std::string payloadAsString = std::string((const char *)&payload[0], (const char *)&payload[payload.size()]);
 	std::vector<std::string> split = splitString(payloadAsString, ' ');
 
 	if (CommandHandlers.count((CLIOpcode)opcode) != 0)

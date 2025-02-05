@@ -31,8 +31,9 @@ public:
 
 	void close()
 	{
+		asio::error_code ec;
+		timer.cancel(ec);
 		if (socket.is_open()) {
-			asio::error_code ec;
 			socket.shutdown(asio::socket_base::shutdown_both, ec);
 			socket.close(ec);
 		}
@@ -41,7 +42,7 @@ public:
 
 private:
 	LobbyConnection(asio::io_context& io_context)
-		: io_context(io_context), socket(io_context) {
+		: io_context(io_context), socket(io_context), timer(io_context) {
 	}
 
 	void send()
@@ -56,6 +57,7 @@ private:
 					asio::placeholders::bytes_transferred));
 	}
 	void onSent(const std::error_code& ec, size_t len);
+	void onTimeOut(const std::error_code& ec);
 
 	using iterator = asio::buffers_iterator<asio::const_buffers_1>;
 
@@ -86,8 +88,9 @@ private:
 
 	asio::io_context& io_context;
 	asio::ip::tcp::socket socket;
+	asio::steady_timer timer;
 	std::vector<uint8_t> recvBuffer;
-	std::array<uint8_t, 1024> sendBuffer;
+	std::array<uint8_t, 8500> sendBuffer;
 	size_t sendIdx = 0;
 	bool sending = false;
 	std::shared_ptr<Player> player;
