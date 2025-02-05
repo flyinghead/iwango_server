@@ -26,7 +26,9 @@ inline static GameId identifyGame(const std::string& gameId)
 		return GameId::Tetris;
 	if (gameId == "T00009T0000910430101")
 		return GameId::GolfShiyouyo;
-	if (gameId == "F00005T0000510410101")
+	if (gameId == "F00005T0000510410101"
+		// Aero Dancing i - Jikai Saku Made Matemasen
+		|| gameId == "F00005T0000510700101")
 		return GameId::AeroDancing;
 	if (gameId == "F00001S0000110490101")
 		return GameId::HundredSwords;
