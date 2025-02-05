@@ -52,6 +52,7 @@ public:
 			throw std::runtime_error(what);
 		}
 		sqlite3_busy_timeout(db, 1000);
+		/*
 		sqlite3_trace_v2(db, SQLITE_TRACE_STMT, [](unsigned t, void *c, void *p, void *x) -> int {
 			if (x == nullptr)
 				return 0;
@@ -66,7 +67,7 @@ public:
 			}
 			return 0;
 		}, nullptr);
-
+		*/
 	}
 	Database(const Database&) = delete;
 	Database& operator=(const Database&) = delete;

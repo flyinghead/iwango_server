@@ -380,7 +380,8 @@ static void sendCTCPMessage(Player::Ptr player, const std::vector<uint8_t>&, con
 		return;
 	std::string opponentName = player->toUtf8(split[0]);
 	Player::Ptr opponent = player->server.getPlayer(opponentName);
-	// TODO
+	// Lobby direct message. Team DM would be 0x44
+	opponent->send(0x2E, player->fromUtf8(player->name) + " " + split[2]);
 }
 
 static void logData(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
