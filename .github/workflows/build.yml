@@ -12,7 +12,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get -y install build-essential git libcurl4-gnutls-dev libasio-dev libicu-dev libcurl4-gnutls-dev
+          apt-get -y install build-essential git libcurl4-gnutls-dev libasio-dev libicu-dev libcurl4-gnutls-dev libsqlite3-dev
 
       - uses: actions/checkout@v4
         with:
