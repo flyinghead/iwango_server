@@ -54,9 +54,9 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	if (userName.empty())
 	{
 		// FIXME not working no matter what I send...
-		player->send(0x03, "Empty handle");
+		player->send(S_TEAM_NAME_EXISTS, "Empty handle");
 	    player->send(0xE3);
-	    player->send(0x16);
+	    player->send(S_DISCONNECTED);
 	    player->disconnect(false);
 		return;
 	}
@@ -90,7 +90,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	   << ":" << tm->tm_hour
 	   << ":" << tm->tm_min
 	   << ":" << tm->tm_sec;
-	player->send(0x11, ss.str());
+	player->send(S_LOGIN_OK, ss.str());
 }
 
 static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -104,7 +104,7 @@ static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const
 	// 4	:1
 	// 5	:0 or :1 (handle index?)
 	player->send(0x0C, "LOB 999 999 AAA AAA");
-	player->send(0x0A, player->server.getMotd());
+	player->send(S_MOTD, player->server.getMotd());
 	player->send(0xE1);	// Ext MeM ready?
 }
 
@@ -114,7 +114,7 @@ static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>
 	if (split[0].empty()) {
 		// Get all players
 		for (auto& p : player->lobby->members)
-			player->send(0x30, p->getSendDataPacket());
+			player->send(S_PLAYER_LIST_ITEM, p->getSendDataPacket());
 	}
 	else
 	{
@@ -122,9 +122,19 @@ static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>
 		std::string name = player->toUtf8(split[0]);
 		Player::Ptr p = player->server.getPlayer(name);
 		if (p != nullptr)
-			player->send(0x30, p->getSendDataPacket());
+			player->send(S_PLAYER_LIST_ITEM, p->getSendDataPacket());
 	}
-	player->send(0x31);
+	player->send(S_PLAYER_LIST_END);
+}
+
+static void sendLobby(Player::Ptr player, uint16_t opcode, Lobby::Ptr lobby)
+{
+	sstream ss;
+	ss << player->fromUtf8(lobby->name) << ' ' << lobby->members.size()
+	   << ' ' << lobby->capacity << ' ' << lobby->flags
+	   << ' ' << (lobby->hasSharedMem ? lobby->sharedMem : "#")
+	   << " #" << lobby->gameName;
+	player->send(opcode, ss.str());
 }
 
 static void refreshLobbiesCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -132,23 +142,16 @@ static void refreshLobbiesCommand(Player::Ptr player, const std::vector<uint8_t>
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	const std::vector<Lobby::Ptr>& lobbies = player->server.getLobbyList();
 	for (auto& lobby : lobbies)
-	{
-		sstream ss;
-		ss << player->fromUtf8(lobby->name) << ' ' << lobby->members.size()
-		   << ' ' << lobby->capacity << ' ' << lobby->flags
-		   << ' ' << (lobby->hasSharedMem ? lobby->sharedMem : "#")
-		   << " #" << lobby->gameName;
-		player->send(0x18, ss.str());
-	}
-	player->send(0x19);
+		sendLobby(player, S_LOBBY_LIST_ITEM, lobby);
+	player->send(S_LOBBY_LIST_END);
 }
 
 static void createOrJoinLobby(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	// name capacity [type]
-	// types: RRT, GROUP, ARCADE, TOURNAMENT
+	// types: RRT (0x2000), GROUP (0x800), ARCADE (0x10), TOURNAMENT (4)
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	if (split.size() != 2) {
+	if (split.size() < 2 || split.size() > 3) {
 		fprintf(stderr, "ENTR_LOBBY: bad arg count %zd\n", split.size());
 		return;
 	}
@@ -156,7 +159,12 @@ static void createOrJoinLobby(Player::Ptr player, const std::vector<uint8_t>&, c
 	uint16_t capacity = atoi(split[1].c_str());
 	Lobby::Ptr lobby = player->server.getLobby(lobbyName);
 	if (lobby == nullptr)
-		lobby = player->server.createLobby(lobbyName, capacity);
+	{
+		lobby = player->server.createLobby(lobbyName, capacity, false);
+		if (lobby != nullptr)
+			// acknowledge the creation
+			sendLobby(player, S_LOBBY_CREATED, lobby);
+	}
 	if (lobby != nullptr)
 		player->joinLobby(lobby);
 }
@@ -190,10 +198,10 @@ static void refreshTeamsCommand(Player::Ptr player, const std::vector<uint8_t>&,
 				ss << player->fromUtf8(p->name);
             }
 			ss << ' ' << player->lobby->gameName;
-            player->send(0x32, ss.str());
+            player->send(S_TEAM_LIST_ITEM, ss.str());
         }
 	}
-	player->send(0x33);
+	player->send(S_TEAM_LIST_END);
 }
 
 static void createTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -203,7 +211,7 @@ static void createTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, c
 	{
 		unsigned capacity = atoi(split[0].c_str());
 		if (player->lobby != nullptr)
-			player->lobby->createTeam(player, player->toUtf8(split[1]), capacity, split[2]);
+			player->createTeam(player->toUtf8(split[1]), capacity, split[2]);
 		else
 			player->disconnect();
 	}
@@ -221,19 +229,19 @@ static void leaveTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, co
 
 static void refreshGamesCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	player->send(0x1B, "1 " + player->server.getGameName());
-	player->send(0x1C);
+	player->send(S_GAME_LIST_ITEM, "1 " + player->server.getGameName());
+	player->send(S_GAME_LIST_END);
 }
 
 static void selectGameCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	std::string& gameName = split[0];
-	player->send(0x1D, player->fromUtf8(player->name) + " " + gameName);
+	player->send(S_GAME_SEL_ACK, player->fromUtf8(player->name) + " " + gameName);
 }
 
 static void getLicenseCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
-	player->send(0x22, "ABCDEFGHI");
+	player->send(S_LICENSE, "ABCDEFGHI");
 }
 
 static void getExtraUserMem(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -298,18 +306,18 @@ static void sharedMemTeamCommand(Player::Ptr player, const std::vector<uint8_t>&
 }
 
 static void pingCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string&) {
-	player->send(0);
+	player->send(S_PONG);
 }
 
 static void disconnectCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string&)
 {
     player->send(0xE3);
-    player->send(0x16);
+    player->send(S_DISCONNECTED);
     player->disconnect(false);
 }
 
 static void reconnectCommand(Player::Ptr player, const std::vector<uint8_t>& data, const std::string&) {
-	player->send(0x1f);
+	player->send(S_RECONNECT_ACK);
 }
 
 static void launchRequestCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string&) {
@@ -353,8 +361,8 @@ static void refreshUsersCommand(Player::Ptr player, const std::vector<uint8_t>&,
 	if (pLobby)
 		count = pLobby->members.size();
 	for (int i = 0; i < count; i++)
-		player->send(0xDA, test(i));
-	player->send(0xD9);
+		player->send(S_LOBBY_PLAYER_LIST_ITEM, test(i));
+	player->send(S_LOBBY_PLAYER_LIST_END);
 }
 
 static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -367,7 +375,7 @@ static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const
 			ss << '!' << player->fromUtf8(found->lobby->name);
 		else
 			ss << '#';
-		player->send(0x07, ss.str());
+		player->send(S_SEARCH_RESULT, ss.str());
 	}
 	player->send(0xC9, "1");	// FIXME golf seems to think it's found, but garbage name(?)
 								// FIXME search and say says failed to send message although the player is found (but self so might be the issue)
@@ -381,11 +389,11 @@ static void sendCTCPMessage(Player::Ptr player, const std::vector<uint8_t>&, con
 	std::string opponentName = player->toUtf8(split[0]);
 	Player::Ptr opponent = player->server.getPlayer(opponentName);
 	// Lobby direct message. Team DM would be 0x44
-	opponent->send(0x2E, player->fromUtf8(player->name) + " " + split[2]);
+	opponent->send(S_LOBBY_DM, player->fromUtf8(player->name) + " " + split[2]);
 }
 
 static void logData(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
-	player->send(0xcf);
+	player->send(S_SENDLOG_ACK);
 }
 
 static void nullCommand(Player::Ptr, const std::vector<uint8_t>&, const std::string&) {

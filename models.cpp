@@ -5,12 +5,21 @@
 
 std::vector<LobbyServer *> LobbyServer::servers;
 
-void Lobby::addPlayer(std::shared_ptr<Player> player)
+void Lobby::addPlayer(Player::Ptr player)
 {
-	members.push_back(player);
+	if (members.size() == capacity) {
+		player->send(S_LOBBY_FULL);
+		return;
+	}
+	// Only add player if not already there
+	auto it = std::find_if(members.begin(), members.end(), [&player](const Player::Ptr& member) {
+		return member->name == player->name;
+	});
+	if (it == members.end())
+		members.push_back(player);
 
 	// Confirm Join Lobby
-	player->send(0x13, player->fromUtf8(name) + " " + player->fromUtf8(player->name));
+	player->send(S_JOIN_LOBBY_ACK, player->fromUtf8(name) + " " + player->fromUtf8(player->name));
 
 	std::vector<std::string> playerNames;
 	// Send player info to all members
@@ -19,38 +28,39 @@ void Lobby::addPlayer(std::shared_ptr<Player> player)
 		playerNames.push_back(p->name);
 		if (p == player)
 			continue;
-		p->send(0x30, player->getSendDataPacket());
+		p->send(S_PLAYER_LIST_ITEM, player->getSendDataPacket());
 	}
 	discordLobbyJoined(player->gameId, player->name, name, playerNames);
 }
 
-void Lobby::removePlayer(std::shared_ptr<Player> player)
+void Lobby::removePlayer(Player::Ptr player)
 {
-	for (auto it = members.begin(); it != members.end(); ++it)
+	auto it = std::find(members.begin(), members.end(), player);
+	if (it != members.end())
 	{
-		if ((*it) == player)
-		{
-			// Remove player from list
-			members.erase(it);
+		// Remove player from list
+		members.erase(it);
 
-			// Confirm Leave Lobby
-			player->send(0xCB);
+		// Confirm Leave Lobby
+		player->send(S_LEAVE_LOBBY_ACK);
 
-			// Tell all members to remove the player
-			for (auto& p : members)
-				p->send(0x2C, p->fromUtf8(player->name));
-			return;
-		}
+		// Tell all members to remove the player
+		for (auto& p : members)
+			p->send(S_LOBBY_LEFT, p->fromUtf8(player->name));
+		if (!permanent && members.empty())
+			parent.deleteLobby(name);
 	}
-	fprintf(stderr, "Player %s not found in lobby %s\n", player->name.c_str(), name.c_str());
+	else {
+		fprintf(stderr, "Player %s not found in lobby %s\n", player->name.c_str(), name.c_str());
+	}
 }
 
 void Lobby::sendChat(const std::string& from, const std::string& message) {
 	for (auto& player : members)
-		player->send(0x2D, player->fromUtf8(from) + " " + player->fromUtf8(message));
+		player->send(S_LOBBY_CHAT, player->fromUtf8(from) + " " + player->fromUtf8(message));
 }
 
-std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const std::string& name, unsigned capacity, const std::string& type)
+Team::Ptr Lobby::createTeam(Player::Ptr creator, const std::string& name, unsigned capacity, const std::string& type)
 {
 	Team::Ptr team = Team::create(shared_from_this(), name, capacity, creator);
 	teams.push_back(team);
@@ -60,28 +70,24 @@ std::shared_ptr<Team> Lobby::createTeam(std::shared_ptr<Player> creator, const s
 	ss << creator->fromUtf8(name) << ' ' << creator->fromUtf8(creator->name) << ' ' << capacity << " 0 " << gameName;
 	std::vector<std::string> playerNames;
 	for (auto& p : members) {
-		p->send(0x28, ss.str());
+		p->send(S_NEW_TEAM, ss.str());
 		playerNames.push_back(p->name);
 	}
 	discordGameCreated(creator->gameId, creator->name, name, playerNames);
 
 	return team;
 }
-void Lobby::deleteTeam(std::shared_ptr<Team> team)
+void Lobby::deleteTeam(Team::Ptr team)
 {
-	for (auto it = teams.begin(); it != teams.end(); ++it)
-	{
-		if ((*it) == team) {
-			teams.erase(it);
-			break;
-		}
-	}
+	auto it = std::find(teams.begin(), teams.end(), team);
+	if (it != teams.end())
+		teams.erase(it);
 	// Tell all members to remove team
 	for (auto& p : members)
-		p->send(0x3A, p->fromUtf8(team->name));
+		p->send(S_TEAM_DELETED, p->fromUtf8(team->name));
 }
 
-std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
+Team::Ptr Lobby::getTeam(const std::string& name)
 {
 	for (auto& team : teams)
 		if (team->name == name)
@@ -89,7 +95,7 @@ std::shared_ptr<Team> Lobby::getTeam(const std::string& name)
 	return nullptr;
 }
 
-Player::Player(std::shared_ptr<LobbyConnection> connection, LobbyServer& server)
+Player::Player(LobbyConnection::Ptr connection, LobbyServer& server)
 	: sharedMem(0x1e), gameId(server.getGameId()), server(server), connection(connection)
 {
 }
@@ -133,7 +139,7 @@ void Player::disconnect(bool sendDCPacket)
 
 	// Tell client to d/c if actually still connected
 	if (sendDCPacket)
-		send(0x17);
+		send(S_DO_DISCONNECT);
 
 	// Remove player from everything
 	if (team) {
@@ -195,17 +201,16 @@ std::vector<uint8_t> Player::getSendDataPacket()
 
 void Player::createTeam(const std::string& name, unsigned capacity, const std::string& type)
 {
-	if (lobby != nullptr)
-	{
-		if (lobby->getTeam(name) == nullptr)
-		{
-			Team::Ptr newTeam = lobby->createTeam(shared_from_this(), name, capacity, type);
-			team = newTeam;
-			return;
-		}
+	if (lobby == nullptr)
+		return;
+	if (lobby->getTeam(name) == nullptr) {
+		Team::Ptr newTeam = lobby->createTeam(shared_from_this(), name, capacity, type);
+		team = newTeam;
 	}
-	fprintf(stderr, "WARN: createTeam: team %s already exists\n", name.c_str());
-	send(0x03); // Name already in use
+	else  {
+		fprintf(stderr, "WARN: createTeam: team %s already exists\n", name.c_str());
+		send(S_TEAM_NAME_EXISTS);
+	}
 }
 void Player::joinTeam(const std::string& name)
 {
@@ -246,7 +251,7 @@ void Player::getExtraMem(const std::string& playerName, int offset, int length)
 	}
 	if ((int)player->extraUserMem.size() < offset + length)
 		player->extraUserMem.resize(offset + length);
-	send(0x50);
+	send(S_EXTUSER_MEM_START);
 	for (uint16_t i = 0; length > 0 && offset < (int)player->extraUserMem.size(); i++)
 	{
 		int chunksz = std::min(length, 200);
@@ -255,9 +260,9 @@ void Player::getExtraMem(const std::string& playerName, int offset, int length)
 		memcpy(&payload[2], &player->extraUserMem[offset], chunksz);
 		length -= chunksz;
 		offset += chunksz;
-		send(0x51, payload);
+		send(S_EXTUSER_MEM_CHUNK, payload);
 	}
-	send(0x52);
+	send(S_EXTUSER_MEM_END);
 }
 
 void Player::startExtraMem(int offset, int length)
@@ -269,7 +274,7 @@ void Player::startExtraMem(int offset, int length)
 	extraMemEnd = offset + length;
 	if (extraMemEnd >= (int)extraUserMem.size())
 		extraUserMem.resize(extraMemEnd);
-	send(0x4F);
+	send(S_EXTUSER_MEM_ACK);
 }
 void Player::setExtraMem(int index, const uint8_t *data, int size)
 {
@@ -280,12 +285,12 @@ void Player::setExtraMem(int index, const uint8_t *data, int size)
 	extraMemOffset += size;
 	if (extraMemOffset >= extraMemEnd)
 		extraMemEnd = 0;
-	send(0x4F);
+	send(S_EXTUSER_MEM_ACK);
 }
 void Player::endExtraMem()
 {
 	extraMemEnd = 0;
-	send(0x4F);
+	send(S_EXTUSER_MEM_ACK);
 }
 
 int Player::send(uint16_t opcode, const uint8_t *payload, unsigned length)

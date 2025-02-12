@@ -8,6 +8,53 @@
 #include <array>
 #include <sstream>
 #include <cassert>
+#include <algorithm>
+
+enum SRVOpcode : uint16_t
+{
+	S_PONG = 0x00,
+	S_TEAM_NAME_EXISTS = 0x03,
+	S_LOBBY_FULL = 0x05,
+	S_SEARCH_RESULT = 0x07,
+	S_MOTD = 0x0A,
+	S_LOGIN_OK = 0x11,
+	S_JOIN_LOBBY_ACK = 0x13,
+	S_DISCONNECTED = 0x16,
+	S_DO_DISCONNECT = 0x17,
+	S_LOBBY_LIST_ITEM = 0x18,
+	S_LOBBY_LIST_END = 0x19,
+	S_GAME_LIST_ITEM = 0x1B,
+	S_GAME_LIST_END = 0x1C,
+	S_GAME_SEL_ACK = 0x1D,
+	S_RECONNECT_ACK = 0x1F,
+	S_LICENSE = 0x22,
+	S_NEW_TEAM = 0x28,
+	S_TEAM_JOINED = 0x29,
+	S_LOBBY_CREATED = 0x2A,
+	S_LOBBY_LEFT = 0x2C,
+	S_LOBBY_CHAT = 0x2D,
+	S_LOBBY_DM = 0x2E,
+	S_PLAYER_LIST_ITEM = 0x30,
+	S_PLAYER_LIST_END = 0x31,
+	S_TEAM_LIST_ITEM = 0x32,
+	S_TEAM_LIST_END = 0x33,
+	S_TEAM_SHARED_MEM = 0x34,
+	S_TEAM_DELETED = 0x3A,
+	S_TEAM_LEFT = 0x3B,
+	S_GAME_SERVER = 0x3D,
+	S_LAUNCH_ACK = 0x3E,
+	S_PLAYER_SHARED_MEM = 0x42,
+	S_TEAM_CHAT = 0x43,
+	S_TEAM_DM = 0x44,
+	S_EXTUSER_MEM_ACK = 0x4F,
+	S_EXTUSER_MEM_START = 0x50,
+	S_EXTUSER_MEM_CHUNK = 0x51,
+	S_EXTUSER_MEM_END = 0x52,
+	S_LEAVE_LOBBY_ACK = 0xCB,
+	S_SENDLOG_ACK = 0xCF,
+	S_LOBBY_PLAYER_LIST_END = 0xD9,
+	S_LOBBY_PLAYER_LIST_ITEM = 0xDA,
+};
 
 using sstream = std::stringstream;
 class Player;
@@ -49,9 +96,11 @@ public:
 	std::vector<std::shared_ptr<Team>> teams;
 
 private:
-	Lobby(const std::string& gameName, const std::string& name, unsigned capacity)
-		: name(name), gameName(gameName), capacity(capacity) {}
+	Lobby(LobbyServer& parent, const std::string& gameName, const std::string& name, unsigned capacity, bool permanent)
+		: name(name), gameName(gameName), capacity(capacity), permanent(permanent), parent(parent) {}
 
+	bool permanent;
+	LobbyServer& parent;
 	friend super;
 };
 
@@ -136,7 +185,7 @@ public:
 	{
 		sharedMem = memAsStr;
 		for (auto& player : members)
-			player->send(0x34, player->fromUtf8(name) + " " + sharedMem);
+			player->send(S_TEAM_SHARED_MEM, player->fromUtf8(name) + " " + sharedMem);
 	}
 	bool addPlayer(Player::Ptr player)
 	{
@@ -153,49 +202,49 @@ public:
 
 		// Send packet to all members
 		for (auto& p : player->lobby->members)
-			p->send(0x29, p->fromUtf8(ss.str()));
+			p->send(S_TEAM_JOINED, p->fromUtf8(ss.str()));
 
 		return true;
 	}
 	bool removePlayer(Player::Ptr player)
 	{
-		for (auto it = members.begin(); it != members.end(); ++it)
+		auto it = std::find(members.begin(), members.end(), player);
+		if (it != members.end())
 		{
-			if ((*it) == player)
-			{
-				members.erase(it);
+			members.erase(it);
 
-				// Change host
-				if (host == player && !members.empty())
-					host = members[0];
+			// Change host
+			if (host == player && !members.empty())
+				host = members[0];
 
-				// Send Packets
-				for (auto& p : player->lobby->members)
-					p->send(0x3B, p->fromUtf8(name + " " + player->name));
+			// Send Packets
+			for (auto& p : player->lobby->members)
+				p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
 
-				// Team deleted?
-				if (members.empty())
-					parent->deleteTeam(shared_from_this());
-				return true;
-			}
+			// Team deleted?
+			if (members.empty())
+				parent->deleteTeam(shared_from_this());
+			return true;
 		}
-		fprintf(stderr, "Player %s not found in team %s\n", player->name.c_str(), name.c_str());
-		return false;
+		else {
+			fprintf(stderr, "Player %s not found in team %s\n", player->name.c_str(), name.c_str());
+			return false;
+		}
 	}
 
 	void sendChat(const std::string& from, const std::string& message) {
 		for (auto& player : members)
-			player->send(0x43, player->fromUtf8(from + " " + message));
+			player->send(S_TEAM_CHAT, player->fromUtf8(from + " " + message));
 	}
 
 	void sendSharedMemPlayer(Player::Ptr owner, const std::vector<uint8_t>& data) {
 		for (auto& player : members)
-			player->send(0x42, Packet::createSharedMemPacket(data, player->fromUtf8(owner->name)));
+			player->send(S_PLAYER_SHARED_MEM, Packet::createSharedMemPacket(data, player->fromUtf8(owner->name)));
 	}
 
 	void sendGameServer(Player::Ptr p) {
 		for (auto& player : members)
-			player->send(0x3d, "172.20.100.100 9503");	// FIXME?
+			player->send(S_GAME_SERVER, "172.20.100.100 9503");	// FIXME?
 	}
 
 	void launchGame(Player::Ptr p)
@@ -204,7 +253,7 @@ public:
 		ss << members.size();
 		for (auto& player : members)
 			ss << ' ' << (host == player ? "*" : "") << player->fromUtf8(player->name) << ' ' << player->getIp();
-		p->send(0x3e, ss.str());
+		p->send(S_LAUNCH_ACK, ss.str());
 	}
 
 	std::string name;
@@ -258,27 +307,26 @@ public:
 		}
 	}
 
-	Lobby::Ptr createLobby(const std::string& name, unsigned capacity)
+	Lobby::Ptr createLobby(const std::string& name, unsigned capacity, bool permanent = true)
 	{
 		if (getLobby(name) == nullptr && capacity > 0)
 		{
-			Lobby::Ptr lobby = Lobby::create(getGameName(), name, capacity);
+			Lobby::Ptr lobby = Lobby::create(*this, getGameName(), name, capacity, permanent);
 			lobbies.push_back(lobby);
 			return lobby;
 		}
 		return nullptr;
 	}
-	/*
+
 	void deleteLobby(std::string name)
 	{
-		for (auto it = lobbies.begin(); it != lobbies.end(); ++it) {
-			if ((*it)->name == name) {
-				lobbies.erase(it);
-				break;
-			}
-		}
+		auto it = std::find_if(lobbies.begin(), lobbies.end(), [&name](const Lobby::Ptr& lobby) {
+			return lobby->name == name;
+		});
+		if (it != lobbies.end())
+			lobbies.erase(it);
 	}
-	*/
+
 	Lobby::Ptr getLobby(const std::string& name)
 	{
 		for (auto& lobby : lobbies)
@@ -310,12 +358,9 @@ public:
 	}
 	void removePlayer(Player::Ptr player)
 	{
-		for (auto it = players.begin(); it != players.end(); ++it) {
-			if ((*it) == player) {
-				players.erase(it);
-				break;
-			}
-		}
+		auto it = std::find(players.begin(), players.end(), player);
+		if (it != players.end())
+			players.erase(it);
 	}
 
 	const std::string& getName() const {
