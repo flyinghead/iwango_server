@@ -1,7 +1,7 @@
 #
 # dependencies: libasio-dev libicu-dev libcurl-dev libsqlite3-dev
 #
-CXXFLAGS=-std=c++17 -O3 -Wall # -fsanitize=address -static-libasan
+CXXFLAGS=-std=c++17 -g -O3 -Wall # -fsanitize=address -static-libasan
 DEPS=asio.h database.h models.h lobby_server.h gate_server.h common.h vms.h sega_crypto.h json.hpp discord.h
 INSTALL_DIR=/usr/local/iwango
 CGI_INSTALL_DIR=/usr/local
