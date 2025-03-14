@@ -287,6 +287,7 @@ public:
 		case GameId::AeroDancing:
 			createLobby("QLADI", 100);
 			createLobby("NLADI", 100);
+			createLobby("PLADI", 100);
 			break;
 		case GameId::HundredSwords:
 			createLobby("Red", 100);
