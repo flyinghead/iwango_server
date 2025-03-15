@@ -19,7 +19,7 @@
 #include <string>
 #include <vector>
 
-class AlreadyExistsException : std::runtime_error
+class AlreadyExistsException : public std::runtime_error
 {
 public:
 	AlreadyExistsException() : std::runtime_error("This name already exists") {}

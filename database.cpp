@@ -163,6 +163,8 @@ bool createHandle(GameId gameId, const std::string& user, int index, const std::
 		stmt.step();
 
 		return true;
+	} catch (const AlreadyExistsException& e) {
+		throw e;
 	} catch (const std::runtime_error& e) {
 		fprintf(stderr, "ERROR: createHandle: %s\n", e.what());
 		return false;
@@ -181,6 +183,8 @@ bool replaceHandle(GameId gameId, const std::string& user, int index, const std:
 		stmt.step();
 
 		return true;
+	} catch (const AlreadyExistsException& e) {
+		throw e;
 	} catch (const std::runtime_error& e) {
 		fprintf(stderr, "ERROR: replaceHandle: %s\n", e.what());
 		return false;
@@ -229,8 +233,11 @@ std::vector<std::string> getHandles(GameId gameId, const std::string& user, cons
 		while (stmt.step())
 			handles.push_back(stmt.getStringColumn(0));
 		if (handles.empty() && !defaultHandle.empty()) {
-			if (createHandle(gameId, user, 0, defaultHandle))
-				handles.push_back(defaultHandle);
+			try {
+				if (createHandle(gameId, user, 0, defaultHandle))
+					handles.push_back(defaultHandle);
+			} catch (const AlreadyExistsException&) {
+			}
 		}
 	} catch (const std::runtime_error& e) {
 		fprintf(stderr, "ERROR: getHandles: %s\n", e.what());
