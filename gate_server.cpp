@@ -80,12 +80,14 @@ private:
 
 	void onReceive(const std::error_code& ec, size_t len)
 	{
-		if (ec || len == 0)
+		if (ec || len < 2)
 		{
 			if (ec && ec != asio::error::eof)
-				fprintf(stderr, "ERROR: onReceive: %s\n", ec.message().c_str());
+				fprintf(stderr, "gate: ERROR: onReceive: %s\n", ec.message().c_str());
+			else if (len != 0)
+				fprintf(stderr, "gate: ERROR: onReceive: small packet: %zd\n", len);
 			else
-				printf("Connection closed\n");
+				printf("gate: Connection closed\n");
 			return;
 		}
 		// Grab data and process if correct.

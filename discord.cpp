@@ -111,7 +111,7 @@ static void discordNotif(const Notif& notif)
 {
 	if (DiscordWebhook.empty())
 		return;
-	if (threadCount.fetch_add(1) > 5) {
+	if (threadCount.fetch_add(1) >= 5) {
 		threadCount.fetch_sub(1);
 		fprintf(stderr, "Discord max thread count reached");
 		return;

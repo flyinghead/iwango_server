@@ -11,12 +11,14 @@ static std::unordered_map<std::string, std::string> Config;
 
 void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 {
-	if (ec || len == 0)
+	if (ec || len < 10)
 	{
 		if (ec && ec != asio::error::eof && ec != asio::error::operation_aborted)
-			fprintf(stderr, "ERROR: onReceive: %s\n", ec.message().c_str());
+			fprintf(stderr, "lobby: ERROR: onReceive: %s\n", ec.message().c_str());
+		else if (len != 0)
+			fprintf(stderr, "lobby: ERROR: onReceive: small packet: %zd\n", len);
 		else
-			printf("Connection closed\n");
+			printf("lobby: Connection closed\n");
 		if (player)
 			player->disconnect(false);
 		return;
