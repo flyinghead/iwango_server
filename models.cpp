@@ -51,11 +51,13 @@ void Lobby::removePlayer(Player::Ptr player)
 			parent.deleteLobby(name);
 	}
 	else {
-		fprintf(stderr, "Player %s not found in lobby %s\n", player->name.c_str(), name.c_str());
+		WARN_LOG(player->gameId, "Player %s not found in lobby %s", player->name.c_str(), name.c_str());
 	}
 }
 
-void Lobby::sendChat(const std::string& from, const std::string& message) {
+void Lobby::sendChat(const std::string& from, const std::string& message)
+{
+	INFO_LOG(parent.getGameId(), "%s lobby chat: %s", from.c_str(), message.c_str());
 	for (auto& player : members)
 		player->send(S_LOBBY_CHAT, player->fromUtf8(from) + " " + player->fromUtf8(message));
 }
@@ -65,6 +67,7 @@ Team::Ptr Lobby::createTeam(Player::Ptr creator, const std::string& name, unsign
 	Team::Ptr team = Team::create(shared_from_this(), name, capacity, creator);
 	teams.push_back(team);
 	creator->team = team;
+	INFO_LOG(creator->gameId, "%s created team %s", creator->name.c_str(), name.c_str());
 
 	sstream ss;
 	ss << creator->fromUtf8(name) << ' ' << creator->fromUtf8(creator->name) << ' ' << capacity << " 0 " << gameName;
@@ -85,6 +88,7 @@ void Lobby::deleteTeam(Team::Ptr team)
 	// Tell all members to remove team
 	for (auto& p : members)
 		p->send(S_TEAM_DELETED, p->fromUtf8(team->name));
+	INFO_LOG(parent.getGameId(), "team %s deleted", team->name.c_str());
 }
 
 Team::Ptr Lobby::getTeam(const std::string& name)
@@ -98,6 +102,9 @@ Team::Ptr Lobby::getTeam(const std::string& name)
 Player::Player(LobbyConnection::Ptr connection, LobbyServer& server)
 	: sharedMem(0x1e), gameId(server.getGameId()), server(server), connection(connection)
 {
+	const asio::ip::address address = connection->getSocket().remote_endpoint().address();
+	ipAddress = address.to_string();
+	ipBytes = address.to_v4().to_bytes();
 }
 
 void Player::login(const std::string& name)
@@ -106,29 +113,11 @@ void Player::login(const std::string& name)
 	extraUserMem = getExtraUserMem(gameId, name);
 }
 
-std::string Player::getIp()
-{
-	if (connection != nullptr)
-	{
-		try {
-			return connection->getSocket().remote_endpoint().address().to_string();
-		} catch (const std::runtime_error& e) {
-			fprintf(stderr, "ERROR: Player::getIp: %s\n", e.what());
-		}
-	}
-	return "0.0.0.0";
+std::string Player::getIp() {
+	return ipAddress;
 }
-std::array<uint8_t, 4> Player::getIpBytes()
-{
-	if (connection != nullptr)
-	{
-		try {
-			return connection->getSocket().remote_endpoint().address().to_v4().to_bytes();
-		} catch (const std::runtime_error& e) {
-			fprintf(stderr, "ERROR: Player::getIpBytes: %s\n", e.what());
-		}
-	}
-	return {};
+std::array<uint8_t, 4> Player::getIpBytes() {
+	return ipBytes;
 }
 
 void Player::disconnect(bool sendDCPacket)
@@ -161,7 +150,7 @@ void Player::disconnect(bool sendDCPacket)
 void Player::setSharedMem(const std::vector<uint8_t>& data)
 {
 	if (data.size() != 0x1e) {
-		fprintf(stderr, "WARN: invalid player sharedMem size: %zd. Ignored\n", data.size());
+		WARN_LOG(gameId, "Invalid player sharedMem size: %zd. Ignored", data.size());
 		return;
 	}
 	memcpy(sharedMem.data(), &data[0], data.size());
@@ -208,7 +197,7 @@ void Player::createTeam(const std::string& name, unsigned capacity, const std::s
 		team = newTeam;
 	}
 	else  {
-		fprintf(stderr, "WARN: createTeam: team %s already exists\n", name.c_str());
+		WARN_LOG(gameId, "createTeam: team %s already exists", name.c_str());
 		send(S_TEAM_NAME_EXISTS);
 	}
 }
@@ -218,27 +207,28 @@ void Player::joinTeam(const std::string& name)
 	{
 		Team::Ptr team = lobby->getTeam(name);
 		if (team == nullptr) {
-			fprintf(stderr, "WARN: joinTeam: team %s not found\n", name.c_str());
+			WARN_LOG(gameId, "joinTeam: team %s not found", name.c_str());
 			return; // TODO Some Error, team didn't exist
 		}
 
-		if (team->addPlayer(shared_from_this()))
+		if (team->addPlayer(shared_from_this())) {
 			this->team = team;
+			INFO_LOG(gameId, "Player %s joined team %s", this->name.c_str(), team->name.c_str());
+		}
 	}
 	else {
-		fprintf(stderr, "WARN: joinTeam: user %s not any lobby\n", this->name.c_str());
-		// TODO Some Error
+		WARN_LOG(gameId, "joinTeam: user %s not in any lobby", this->name.c_str());
 	}
 }
 void Player::leaveTeam()
 {
 	if (lobby != nullptr && team != nullptr) {
 		team->removePlayer(shared_from_this());
+		INFO_LOG(gameId, "Player %s left team %s", this->name.c_str(), team->name.c_str());
 		this->team = nullptr;
 	}
 	else {
-		fprintf(stderr, "WARN: leaveTeam: user %s not any lobby or team\n", this->name.c_str());
-		// TODO Some Error
+		WARN_LOG(gameId, "leaveTeam: user %s not in any lobby or team", this->name.c_str());
 	}
 }
 
@@ -246,7 +236,7 @@ void Player::getExtraMem(const std::string& playerName, int offset, int length)
 {
 	Player::Ptr player = server.getPlayer(playerName);
 	if (player == nullptr) {
-		fprintf(stderr, "Player::getExtraMem: user %s not found\n", playerName.c_str());
+		WARN_LOG(gameId, "Player::getExtraMem: user %s not found", playerName.c_str());
 		return;
 	}
 	if ((int)player->extraUserMem.size() < offset + length)
@@ -296,7 +286,7 @@ void Player::endExtraMem()
 int Player::send(uint16_t opcode, const uint8_t *payload, unsigned length)
 {
 	if (connection == nullptr) {
-		fprintf(stderr, "WARNING: player %s has a null connection\n", name.c_str());
+		WARN_LOG(gameId, "player %s has a null connection", name.c_str());
 		return 0;
 	}
 	std::vector<uint8_t> data = makePacket(opcode, payload, length);

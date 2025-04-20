@@ -78,7 +78,7 @@ static void postWebhook(Notif notif)
 	CURL *curl = curl_easy_init();
 	if (curl == nullptr)
 	{
-		fprintf(stderr, "Can't create curl handle\n");
+		ERROR_LOG(notif.gameId, "Can't create curl handle");
 		threadCount.fetch_sub(1);
 		return;
 	}
@@ -93,14 +93,14 @@ static void postWebhook(Notif notif)
 
 	res = curl_easy_perform(curl);
 	if (res != CURLE_OK) {
-		fprintf(stderr, "curl error: %d", res);
+		ERROR_LOG(notif.gameId, "curl error: %d", res);
 	}
 	else
 	{
 		long code;
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
 		if (code < 200 || code >= 300)
-			fprintf(stderr, "Discord error: %ld", code);
+			ERROR_LOG(notif.gameId, "Discord error: %ld", code);
 	}
 	curl_slist_free_all(headers);
 	curl_easy_cleanup(curl);
@@ -113,7 +113,7 @@ static void discordNotif(const Notif& notif)
 		return;
 	if (threadCount.fetch_add(1) >= 5) {
 		threadCount.fetch_sub(1);
-		fprintf(stderr, "Discord max thread count reached");
+		WARN_LOG(notif.gameId, "Discord max thread count reached");
 		return;
 	}
 	std::thread thread(postWebhook, notif);

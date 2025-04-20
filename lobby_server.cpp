@@ -9,38 +9,65 @@
 static asio::io_context io_context;
 static std::unordered_map<std::string, std::string> Config;
 
+void LobbyConnection::close()
+{
+	if (player)
+		INFO_LOG(player->gameId, "[%s] Connection closed for %s", player->getIp().c_str(), player->name.c_str());
+	asio::error_code ec;
+	timer.cancel(ec);
+	if (socket.is_open()) {
+		socket.shutdown(asio::socket_base::shutdown_both, ec);
+		socket.close(ec);
+	}
+	player.reset();
+}
+
 void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 {
 	if (ec || len < 10)
 	{
-		if (ec && ec != asio::error::eof && ec != asio::error::operation_aborted)
-			fprintf(stderr, "lobby: ERROR: onReceive: %s\n", ec.message().c_str());
+		std::string addr;
+		GameId gameId;
+		if (player) {
+			addr = player->getIp();
+			gameId = player->gameId;
+		}
+		else {
+			addr = "?.?.?.?";
+			gameId = GameId::Unknown;
+		}
+		if (ec && ec != asio::error::eof && ec != asio::error::operation_aborted
+				&& ec != asio::error::bad_descriptor)
+			ERROR_LOG(gameId, "[%s] onReceive: %s", addr.c_str(), ec.message().c_str());
 		else if (len != 0)
-			fprintf(stderr, "lobby: ERROR: onReceive: small packet: %zd\n", len);
-		else
-			printf("lobby: Connection closed\n");
+			ERROR_LOG(gameId, "[%s] onReceive: small packet: %zd", addr.c_str(), len);
 		if (player)
 			player->disconnect(false);
 		return;
 	}
 	// Grab data and process if correct.
+	uint16_t opcode = *(uint16_t *)&recvBuffer[8];
+	std::vector<uint8_t> payload(&recvBuffer[10], &recvBuffer[len]);
+#ifdef DEBUG
 	//uint16_t unk1 = *(uint16_t *)&recvBuffer[2];
 	uint16_t sequence = *(uint16_t *)&recvBuffer[4];
 	//uint16_t unk2 = *(uint16_t *)&recvBuffer[6];
-	uint16_t opcode = *(uint16_t *)&recvBuffer[8];
-	std::vector<uint8_t> payload(&recvBuffer[10], &recvBuffer[len]);
 	std::string s((char *)&payload[0], payload.size());
-	printf("lobby: Request[%d]: %04x ", sequence, opcode);
 	if (strlen(s.c_str()) != s.length())
 	{
-		printf("[");
+		std::string hexdump;
 		for (uint8_t b : payload)
-			printf("%02x ", b);
-		printf("]\n");
+		{
+			char hexbyte[3];
+			sprintf(hexbyte, "%02x", b);
+			hexdump += std::string(hexdump.empty() ? "" : " ") + std::string(hexbyte);
+		}
+		DEBUG_LOG(player->gameId, "Request[%d]: %04x [%s]", sequence, opcode, hexdump.c_str());
 	}
 	else {
-		printf("[%s]\n", sjisToUtf8(s).c_str());
+		DEBUG_LOG(player->gameId, "Request[%d]: %04x [%s]", sequence, opcode, sjisToUtf8(s).c_str());
 	}
+#endif
 	player->receive(opcode, payload);
 	receive();
 	timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(60));
@@ -51,7 +78,8 @@ void LobbyConnection::onSent(const std::error_code& ec, size_t len)
 {
 	if (ec)
 	{
-		fprintf(stderr, "ERROR: onSent: %s\n", ec.message().c_str());
+		if (ec != asio::error::eof && ec != asio::error::bad_descriptor)
+			ERROR_LOG(player ? player->gameId : GameId::Unknown, "onSent: %s", ec.message().c_str());
 		if (player)
 			player->disconnect(false);
 		return;
@@ -69,10 +97,10 @@ void LobbyConnection::onTimeOut(const std::error_code& ec)
 {
 	if (ec) {
 		if (ec != asio::error::operation_aborted)
-			fprintf(stderr, "ERROR: onTimeout: %s\n", ec.message().c_str());
+			ERROR_LOG(player ? player->gameId : GameId::Unknown, "onTimeout: %s", ec.message().c_str());
 	}
 	else if (player) {
-		printf("Player %s time out\n", player->name.c_str());
+		INFO_LOG(player->gameId, "[%s] Player %s time out", player->getIp().c_str(), player->name.c_str());
 		auto lplayer = player;
 		lplayer->disconnect(false);
 	}
@@ -104,8 +132,8 @@ private:
 	{
 		if (!error)
 		{
-			printf("New connection from %s\n", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
 			Player::Ptr player = Player::create(newConnection, server);
+			INFO_LOG(player->gameId, "New connection from %s", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
 			newConnection->setPlayer(player);
 			server.addPlayer(player);
 			newConnection->receive();
@@ -128,7 +156,7 @@ static void loadConfig(const std::string& path)
 {
 	std::filebuf fb;
 	if (!fb.open(path, std::ios::in)) {
-		fprintf(stderr, "ERROR: config file %s not found\n", path.c_str());
+		ERROR_LOG(GameId::Unknown, "config file %s not found", path.c_str());
 		return;
 	}
 
@@ -142,7 +170,7 @@ static void loadConfig(const std::string& path)
 		if (pos != std::string::npos)
 			Config[line.substr(0, pos)] = line.substr(pos + 1);
 		else
-			fprintf(stderr, "ERROR: config file syntax error: %s\n", line.c_str());
+			ERROR_LOG(GameId::Unknown, "config file syntax error: %s", line.c_str());
 	}
 }
 
@@ -169,11 +197,11 @@ int main(int argc, char *argv[])
 	setDiscordWebhook(getConfig("DiscordWebhook", ""));
 	setDatabasePath(getConfig("DatabasePath", ""));
 
-	printf("IWANGO Emulator: Gate Server by Ioncannon\n");
+	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: Gate Server by Ioncannon");
 	GateServer::Ptr gateServer = GateServer::create(io_context, 9500);
 	gateServer->start();
 
-	printf("IWANGO Emulator: Lobby Server by Ioncannon\n");
+	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: Lobby Server by Ioncannon");
 	LobbyServer daytonaServer(GameId::Daytona, getConfig("DaytonaServerName", "DCNet_Daytona"));
 	daytonaServer.setMotd(getConfig("DaytonaMOTD", daytonaServer.getMotd()));
 	LobbyAcceptor::Ptr daytonaAcceptor = LobbyAcceptor::create(io_context, daytonaServer);
@@ -201,5 +229,5 @@ int main(int argc, char *argv[])
 
 	io_context.run();
 
-	printf("IWANGO Emulator: terminated\n");
+	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: terminated");
 }

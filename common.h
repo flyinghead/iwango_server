@@ -9,6 +9,7 @@ std::string getConfig(const std::string& name, const std::string& default_value)
 
 enum class GameId
 {
+	Unknown = -1,
 	Daytona,
 	DaytonaJP,
 	Tetris,
@@ -84,3 +85,45 @@ inline static std::string sjisToUtf8(const std::string& value)
 
     return std::string(result.begin(), result.end() - 1);
 }
+
+namespace Log {
+enum LEVEL
+{
+	ERROR = 0,
+	WARNING = 1,
+	NOTICE = 2,
+	INFO = 3,
+	DEBUG = 4,
+};
+}
+
+void logger(Log::LEVEL level, GameId gameId, const char *file, int line, const char *format, ...);
+
+#define ERROR_LOG(gameId, ...)                      \
+	do {                                    \
+		logger(Log::ERROR, gameId, __FILE__, __LINE__, __VA_ARGS__);    \
+	} while (0)
+
+#define WARN_LOG(gameId, ...)                       \
+	do {                                    \
+		logger(Log::WARNING, gameId, __FILE__, __LINE__, __VA_ARGS__);    \
+	} while (0)
+
+#define NOTICE_LOG(gameId, ...)                     \
+	do {                                    \
+		logger(Log::NOTICE, gameId, __FILE__, __LINE__, __VA_ARGS__);    \
+	} while (0)
+
+#define INFO_LOG(gameId, ...)                       \
+	do {                                    \
+		logger(Log::INFO, gameId, __FILE__, __LINE__, __VA_ARGS__);    \
+	} while (0)
+
+#ifdef DEBUG
+#define DEBUG_LOG(gameId, ...)                      \
+	do {                                    \
+		logger(Log::DEBUG, gameId, __FILE__, __LINE__, __VA_ARGS__);    \
+	} while (0)
+#else
+#define DEBUG_LOG(...)
+#endif

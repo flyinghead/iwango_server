@@ -166,7 +166,7 @@ bool createHandle(GameId gameId, const std::string& user, int index, const std::
 	} catch (const AlreadyExistsException& e) {
 		throw e;
 	} catch (const std::runtime_error& e) {
-		fprintf(stderr, "ERROR: createHandle: %s\n", e.what());
+		ERROR_LOG(gameId, "createHandle: %s", e.what());
 		return false;
 	}
 }
@@ -186,7 +186,7 @@ bool replaceHandle(GameId gameId, const std::string& user, int index, const std:
 	} catch (const AlreadyExistsException& e) {
 		throw e;
 	} catch (const std::runtime_error& e) {
-		fprintf(stderr, "ERROR: replaceHandle: %s\n", e.what());
+		ERROR_LOG(gameId, "replaceHandle: %s", e.what());
 		return false;
 	}
 }
@@ -217,7 +217,7 @@ bool deleteHandle(GameId gameId, const std::string& user, int index)
 
 		return true;
 	} catch (const std::runtime_error& e) {
-		fprintf(stderr, "ERROR: deleteHandle: %s\n", e.what());
+		ERROR_LOG(gameId, "deleteHandle: %s", e.what());
 		return false;
 	}
 }
@@ -240,7 +240,7 @@ std::vector<std::string> getHandles(GameId gameId, const std::string& user, cons
 			}
 		}
 	} catch (const std::runtime_error& e) {
-		fprintf(stderr, "ERROR: getHandles: %s\n", e.what());
+		ERROR_LOG(gameId, "getHandles: %s", e.what());
 	}
 	return handles;
 }
@@ -281,7 +281,7 @@ void updateExtraUserMem(GameId gameId, const std::string& user, const uint8_t *d
 			stmt.step();
 		}
 	} catch (const std::runtime_error& e) {
-		fprintf(stderr, "ERROR: updateExtraUserMem: %s\n", e.what());
+		ERROR_LOG(gameId, "updateExtraUserMem: %s", e.what());
 	}
 }
 
@@ -295,7 +295,7 @@ std::vector<uint8_t> getExtraUserMem(GameId gameId, const std::string& user)
 		if (stmt.step())
 			return stmt.getBlobColumn(0);
 	} catch (const std::runtime_error& e) {
-		fprintf(stderr, "ERROR: getExtraUserMem: %s\n", e.what());
+		ERROR_LOG(gameId, "getExtraUserMem: %s", e.what());
 	}
 	return {};
 }

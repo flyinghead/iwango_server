@@ -117,6 +117,7 @@ public:
 	void joinLobby(Lobby::Ptr lobby)
 	{
 		if (lobby != nullptr) {
+			INFO_LOG(gameId, "%s joined lobby %s", name.c_str(), lobby->name.c_str());
 			this->lobby = lobby;
 			lobby->addPlayer(shared_from_this());
 		}
@@ -128,6 +129,7 @@ public:
 	{
 		if (lobby != nullptr)
 		{
+			INFO_LOG(gameId, "%s left lobby %s", name.c_str(), lobby->name.c_str());
 			lobby->removePlayer(shared_from_this());
 			lobby = nullptr;
 		}
@@ -175,6 +177,8 @@ private:
 	std::vector<uint8_t> extraUserMem;
 	int extraMemOffset = 0;
 	int extraMemEnd = 0;
+	std::string ipAddress;
+	std::array<uint8_t, 4> ipBytes;
 	friend super;
 };
 
@@ -227,12 +231,14 @@ public:
 			return true;
 		}
 		else {
-			fprintf(stderr, "Player %s not found in team %s\n", player->name.c_str(), name.c_str());
+			WARN_LOG(player->gameId, "Player %s not found in team %s", player->name.c_str(), name.c_str());
 			return false;
 		}
 	}
 
-	void sendChat(const std::string& from, const std::string& message) {
+	void sendChat(const std::string& from, const std::string& message)
+	{
+		INFO_LOG(host->gameId, "%s team chat: %s", from.c_str(), message.c_str());
 		for (auto& player : members)
 			player->send(S_TEAM_CHAT, player->fromUtf8(from + " " + message));
 	}

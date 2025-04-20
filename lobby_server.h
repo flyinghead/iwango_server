@@ -29,16 +29,7 @@ public:
 		send();
 	}
 
-	void close()
-	{
-		asio::error_code ec;
-		timer.cancel(ec);
-		if (socket.is_open()) {
-			socket.shutdown(asio::socket_base::shutdown_both, ec);
-			socket.close(ec);
-		}
-		player.reset();
-	}
+	void close();
 
 private:
 	LobbyConnection(asio::io_context& io_context)

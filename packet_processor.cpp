@@ -78,7 +78,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 		exists->disconnect();
 	}
 #endif
-
+	INFO_LOG(player->gameId, "[%s] Player %s logged in", player->getIp().c_str(), player->name.c_str());
 	// We are good to continue
 	time_t now;
 	time(&now);
@@ -95,7 +95,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 
 static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	//std::vector<std::string> split = splitString(dataAsString, ' ');
+	std::vector<std::string> split = splitString(dataAsString, ' ');
 	// args:
 	// 0	:key user id
 	// 1	":dummy"
@@ -103,6 +103,8 @@ static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const
 	// 3	:console id
 	// 4	:1
 	// 5	:0 or :1 (handle index?)
+	if (split.size() > 3)
+		INFO_LOG(player->gameId, "[%s] Player %s console ID: %s", player->getIp().c_str(), player->name.c_str(), split[3].substr(1).c_str());
 	player->send(0x0C, "LOB 999 999 AAA AAA");
 	player->send(S_MOTD, player->server.getMotd());
 	player->send(0xE1);	// Ext MeM ready?
@@ -152,7 +154,7 @@ static void createOrJoinLobby(Player::Ptr player, const std::vector<uint8_t>&, c
 	// types: RRT (0x2000), GROUP (0x800), ARCADE (0x10), TOURNAMENT (4)
 	std::vector<std::string> split = splitString(dataAsString, ' ');
 	if (split.size() < 2 || split.size() > 3) {
-		fprintf(stderr, "ENTR_LOBBY: bad arg count %zd\n", split.size());
+		ERROR_LOG(player->gameId, "[%s] ENTR_LOBBY: bad arg count %zd", player->name.c_str(), split.size());
 		return;
 	}
 	std::string lobbyName = player->toUtf8(split[0]);
@@ -443,6 +445,6 @@ void PacketProcessor::handlePacket(Player::Ptr player, uint16_t opcode, const st
 	if (CommandHandlers.count((CLIOpcode)opcode) != 0)
 		CommandHandlers[(CLIOpcode)opcode](player, payload, payloadAsString);
 	else
-		printf("Received unknown opcode: 0x%02x -> %s\n", opcode, payloadAsString.c_str());
+		WARN_LOG(player->gameId, "Received unknown opcode: 0x%02x -> %s", opcode, payloadAsString.c_str());
 }
 

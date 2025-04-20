@@ -50,7 +50,8 @@ private:
 	{
 		if (ec)
 		{
-			fprintf(stderr, "ERROR: onSent: %s\n", ec.message().c_str());
+			if (ec != asio::error::eof && ec != asio::error::bad_descriptor)
+				ERROR_LOG(GameId::Unknown, "gate: onSent: %s", ec.message().c_str());
 			return;
 		}
 		sending = false;
@@ -82,17 +83,17 @@ private:
 	{
 		if (ec || len < 2)
 		{
-			if (ec && ec != asio::error::eof)
-				fprintf(stderr, "gate: ERROR: onReceive: %s\n", ec.message().c_str());
+			if (ec && ec != asio::error::eof && ec != asio::error::bad_descriptor)
+				ERROR_LOG(GameId::Unknown, "gate: onReceive: %s", ec.message().c_str());
 			else if (len != 0)
-				fprintf(stderr, "gate: ERROR: onReceive: small packet: %zd\n", len);
+				ERROR_LOG(GameId::Unknown, "gate: onReceive: small packet: %zd", len);
 			else
-				printf("gate: Connection closed\n");
+				DEBUG_LOG(GameId::Unknown, "gate: Connection closed");
 			return;
 		}
 		// Grab data and process if correct.
 		std::string payload = std::string(&recvBuffer[2], &recvBuffer[len]);
-		printf("gate: Request: [%s]\n", payload.c_str());
+		INFO_LOG(GameId::Unknown, "gate: [%s] Request [%s]", socket.remote_endpoint().address().to_string().c_str(), payload.c_str());
 		processRequest(payload);
 		receive();
 	}
@@ -287,7 +288,7 @@ void GateServer::start()
 void GateServer::handleAccept(GateConnection::Ptr newConnection, const std::error_code& error)
 {
 	if (!error) {
-		printf("New connection from %s\n", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
+		INFO_LOG(GameId::Unknown, "gate: New connection from %s", newConnection->getSocket().remote_endpoint().address().to_string().c_str());
 		newConnection->receive();
 	}
 	start();
