@@ -36,6 +36,8 @@ struct {
 	{ "Golf Shiyou Yo 2",			"https://dcnet.flyca.st/gamepic/golfshiyou2.jpg" },
 	{ "Aero Dancing i",				"https://dcnet.flyca.st/gamepic/aerodancing.jpg" },
 	{ "Hundred Swords",				"https://dcnet.flyca.st/gamepic/hundredswords.jpg" },
+	{ "Culdcept",					"" },
+	{ "Aero Dancing F",				"https://dcnet.flyca.st/gamepic/aerodancing-fsd.jpg" },
 };
 
 class Notif
