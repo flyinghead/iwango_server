@@ -31,9 +31,10 @@ const char *Games[] = {
 	"daytonajp",
 	"tetris",
 	"golf",
-	"aero",
+	"aeroI",
 	"100swords",
 	"culdcept",
+	"aeroF",
 };
 
 void logger(Log::LEVEL level, GameId gameId, const char* file, int line, const char *format, ...)

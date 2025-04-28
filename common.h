@@ -14,9 +14,10 @@ enum class GameId
 	DaytonaJP,
 	Tetris,
 	GolfShiyouyo,
-	AeroDancing,
+	AeroDancingI,
 	HundredSwords,
 	CuldCept,
+	AeroDancingF,
 };
 
 inline static GameId identifyGame(const std::string& gameId)
@@ -30,7 +31,10 @@ inline static GameId identifyGame(const std::string& gameId)
 	if (gameId == "F00005T0000510410101"
 		// Aero Dancing i - Jikai Saku Made Matemasen
 		|| gameId == "F00005T0000510700101")
-		return GameId::AeroDancing;
+		return GameId::AeroDancingI;
+	// Aero Dancing F - Todoroki Tsubasa no Hatsu Hikou
+	if (gameId == "F00005T0000510420101")
+		return GameId::AeroDancingF;
 	if (gameId == "F00001S0000110490101")
 		return GameId::HundredSwords;
 	if (gameId == "T00011T0001110500101")

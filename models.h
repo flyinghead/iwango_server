@@ -290,10 +290,13 @@ public:
 		servers.push_back(this);
 		switch (gameId)
 		{
-		case GameId::AeroDancing:
+		case GameId::AeroDancingI:
 			createLobby("QLADI", 100);
 			createLobby("NLADI", 100);
 			createLobby("PLADI", 100);
+			break;
+		case GameId::AeroDancingF:
+			createLobby("Main_Lobby", 100);
 			break;
 		case GameId::HundredSwords:
 			createLobby("Red", 100);
@@ -385,8 +388,9 @@ public:
 		case GameId::Daytona: return 9501;
 		case GameId::Tetris: return 9502;
 		case GameId::GolfShiyouyo: return 9503;
-		case GameId::AeroDancing: return 9504;
+		case GameId::AeroDancingI: return 9504;
 		case GameId::HundredSwords: return 9505;
+		case GameId::AeroDancingF: return 9506;
 		default: assert(false); return 0;
 		}
 	}
@@ -398,7 +402,8 @@ public:
 		case GameId::Daytona: return "Daytona";
 		case GameId::Tetris: return "Tetris";
 		case GameId::GolfShiyouyo: return "Golf";
-		case GameId::AeroDancing: return "T-6807M";
+		case GameId::AeroDancingI: return "T-6807M";
+		case GameId::AeroDancingF: return "T-6805M";
 		case GameId::HundredSwords: return "Hundred";
 		default: assert(false); return "???";
 		}

@@ -217,10 +217,15 @@ int main(int argc, char *argv[])
 	LobbyAcceptor::Ptr golfAcceptor = LobbyAcceptor::create(io_context, golfServer);
 	golfAcceptor->start();
 
-	LobbyServer aeroServer(GameId::AeroDancing, getConfig("AeroDancingServerName", "DCNet_Aero_Dancing"));
-	aeroServer.setMotd(getConfig("AeroDancingMOTD", aeroServer.getMotd()));
-	LobbyAcceptor::Ptr aeroAcceptor = LobbyAcceptor::create(io_context, aeroServer);
-	aeroAcceptor->start();
+	LobbyServer aeroIServer(GameId::AeroDancingI, getConfig("AeroDancingServerName", "DCNet_Aero_Dancing"));
+	aeroIServer.setMotd(getConfig("AeroDancingMOTD", aeroIServer.getMotd()));
+	LobbyAcceptor::Ptr aeroIAcceptor = LobbyAcceptor::create(io_context, aeroIServer);
+	aeroIAcceptor->start();
+
+	LobbyServer aeroFServer(GameId::AeroDancingF, getConfig("AeroDancingServerName", "DCNet_Aero_Dancing"));
+	aeroFServer.setMotd(getConfig("AeroDancingMOTD", aeroFServer.getMotd()));
+	LobbyAcceptor::Ptr aeroFAcceptor = LobbyAcceptor::create(io_context, aeroFServer);
+	aeroFAcceptor->start();
 
 	LobbyServer swordsServer(GameId::HundredSwords, getConfig("HundredSwordsServerName", "DCNet"));
 	swordsServer.setMotd(getConfig("HundredSwordsMOTD", swordsServer.getMotd()));
