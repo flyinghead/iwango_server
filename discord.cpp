@@ -26,19 +26,23 @@ static std::atomic_int threadCount;
 
 using namespace nlohmann;
 
+#define BASE_URL "https://dcnet.flyca.st/gamepic/"
+
 struct {
 	const char *name;
 	const char *url;
 } Games[] = {
-	{ "Daytona USA",				"https://dcnet.flyca.st/gamepic/daytona.jpg" },
-	{ "Daytona USA",				"https://dcnet.flyca.st/gamepic/daytona.jpg" },
-	{ "Sega Tetris",				"https://dcnet.flyca.st/gamepic/segatetris.jpg" },
-	{ "Golf Shiyou Yo 2",			"https://dcnet.flyca.st/gamepic/golfshiyou2.jpg" },
-	{ "Aero Dancing i",				"https://dcnet.flyca.st/gamepic/aerodancing.jpg" },
-	{ "Hundred Swords",				"https://dcnet.flyca.st/gamepic/hundredswords.jpg" },
-	{ "Culdcept",					"" },
-	{ "Aero Dancing F",				"https://dcnet.flyca.st/gamepic/aerodancing-fsd.jpg" },
+	{ "Daytona USA",				BASE_URL "daytona.jpg" },
+	{ "Daytona USA",				BASE_URL "daytona.jpg" },
+	{ "Sega Tetris",				BASE_URL "segatetris.jpg" },
+	{ "Golf Shiyou Yo 2",			BASE_URL "golfshiyou2.jpg" },
+	{ "Aero Dancing i",				BASE_URL "aerodancing.jpg" },
+	{ "Hundred Swords",				BASE_URL "hundredswords.jpg" },
+	{ "Culdcept",					BASE_URL "culdcept.jpg" },
+	{ "Aero Dancing F",				BASE_URL "aerodancing-fsd.jpg" },
 };
+
+#undef BASE_URL
 
 class Notif
 {

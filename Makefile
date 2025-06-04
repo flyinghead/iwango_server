@@ -35,8 +35,8 @@ clean:
 install: iwango_server keycutter.cgi
 	mkdir -p $(DESTDIR)$(sbindir)
 	install iwango_server $(DESTDIR)$(sbindir)
-	mkdir -p $(DESTDIR)$(libexecdir)
-	install keycutter.cgi $(DESTDIR)$(libexecdir)
+	mkdir -p $(DESTDIR)$(libexecdir)/cgi-bin
+	install keycutter.cgi $(DESTDIR)$(libexecdir)/cgi-bin
 	mkdir -p $(DESTDIR)$(sysconfdir)
 	cp -n iwango.cfg $(DESTDIR)$(sysconfdir)
 
@@ -49,5 +49,6 @@ installservice: iwango.service
 	systemctl enable $<
 
 createdb: iwango.sql
+	mkdir -p /var/lib/iwango
 	sqlite3 /var/lib/iwango/iwango.db < iwango.sql
-	chown $(USER):$(USER) /var/lib/iwango/iwango.db
+	chown $(USER):$(USER) /var/lib/iwango /var/lib/iwango/iwango.db

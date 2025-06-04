@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
 
 	loadConfig(argc >= 2 ? argv[1] : "iwango.cfg");
 	setDiscordWebhook(getConfig("DiscordWebhook", ""));
-	setDatabasePath(getConfig("DatabasePath", ""));
+	setDatabasePath(getConfig("DatabasePath", "/var/lib/iwango/iwango.db"));
 
 	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: Gate Server by Ioncannon");
 	GateServer::Ptr gateServer = GateServer::create(io_context, 9500);
