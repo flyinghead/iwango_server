@@ -123,7 +123,7 @@ void logger(Log::LEVEL level, GameId gameId, const char *file, int line, const c
 		logger(Log::INFO, gameId, __FILE__, __LINE__, __VA_ARGS__);    \
 	} while (0)
 
-#ifdef DEBUG
+#ifndef NDEBUG
 #define DEBUG_LOG(gameId, ...)                      \
 	do {                                    \
 		logger(Log::DEBUG, gameId, __FILE__, __LINE__, __VA_ARGS__);    \

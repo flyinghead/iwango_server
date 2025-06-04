@@ -48,7 +48,7 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 	// Grab data and process if correct.
 	uint16_t opcode = *(uint16_t *)&recvBuffer[8];
 	std::vector<uint8_t> payload(&recvBuffer[10], &recvBuffer[len]);
-#ifdef DEBUG
+#ifndef NDEBUG
 	//uint16_t unk1 = *(uint16_t *)&recvBuffer[2];
 	uint16_t sequence = *(uint16_t *)&recvBuffer[4];
 	//uint16_t unk2 = *(uint16_t *)&recvBuffer[6];
@@ -231,6 +231,11 @@ int main(int argc, char *argv[])
 	swordsServer.setMotd(getConfig("HundredSwordsMOTD", swordsServer.getMotd()));
 	LobbyAcceptor::Ptr swordsAcceptor = LobbyAcceptor::create(io_context, swordsServer);
 	swordsAcceptor->start();
+
+	LobbyServer culdceptServer(GameId::CuldCept, getConfig("CuldceptServerName", "DCNet"));
+	culdceptServer.setMotd(getConfig("CuldceptMOTD", culdceptServer.getMotd()));
+	LobbyAcceptor::Ptr culdceptAcceptor = LobbyAcceptor::create(io_context, culdceptServer);
+	culdceptAcceptor->start();
 
 	io_context.run();
 

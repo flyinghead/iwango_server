@@ -10,6 +10,10 @@
 
 using sstream = std::stringstream;
 
+static std::string toSjis(const std::string& str, GameId gameId) {
+	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept);
+}
+
 class GateConnection : public SharedThis<GateConnection>
 {
 public:
@@ -152,7 +156,7 @@ private:
 					handleName = "";
 				}
 				if (!handleName.empty())
-					sendPacket(0x3F2, "1" + utf8ToSjis(handleName, gameId == GameId::GolfShiyouyo));
+					sendPacket(0x3F2, "1" + toSjis(handleName, gameId));
 				else
 					sendPacket(0x3F2);
 			}
@@ -168,7 +172,7 @@ private:
 				// IWANGO max handle length is 19 chars. But Golf Shiyou 2 only accepts
 				// full-width shift-JIS chars which take up 2 bytes each.
 				// Hundred Swords UI only has space for 6 chars but no other issue.
-				unsigned maxLength = gameId == GameId::GolfShiyouyo ? 9 : 19;
+				unsigned maxLength = (gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept) ? 9 : 19;
 				if (gameId == GameId::Daytona)
 					handleName = handleName.substr(0, maxLength - 3) + ".us";
 				else
@@ -179,7 +183,7 @@ private:
 				{
 					if (i > 0)
 						ss << ' ';
-					ss << (i + 1) << utf8ToSjis(handles[i], gameId == GameId::GolfShiyouyo);
+					ss << (i + 1) << toSjis(handles[i], gameId);
 				}
 				sendPacket(0x3F2, ss.str());
 			}
@@ -202,7 +206,7 @@ private:
 
 			try {
 				if (createHandle(gameId, userName, handleIndx, handlename))
-					sendPacket(0x3F3, "1 " + utf8ToSjis(handlename, gameId == GameId::GolfShiyouyo));
+					sendPacket(0x3F3, "1 " + toSjis(handlename, gameId));
 				else
 					sendPacket(ERROR1);
 			} catch (const AlreadyExistsException&) {
@@ -227,7 +231,7 @@ private:
 
 			try {
 				if (replaceHandle(gameId, userName, handleIndx, newHandleName))
-					sendPacket(0x3F4, "1 " + utf8ToSjis(newHandleName, gameId == GameId::GolfShiyouyo));
+					sendPacket(0x3F4, "1 " + toSjis(newHandleName, gameId));
 				else
 					sendPacket(ERROR1);
 			} catch (const AlreadyExistsException&) {

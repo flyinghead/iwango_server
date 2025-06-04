@@ -85,6 +85,8 @@ public:
 	std::shared_ptr<Team> createTeam(std::shared_ptr<Player> creator, const std::string& name, unsigned capacity, const std::string& type);
 	void deleteTeam(std::shared_ptr<Team> team);
 	std::shared_ptr<Team> getTeam(const std::string& name);
+	void setSharedMem(const std::string& data);
+	std::string getSjisName() const;
 
 	std::string name;
 	unsigned flags = 0;
@@ -306,6 +308,23 @@ public:
 			createLobby("Purple", 100);
 			createLobby("Orange", 100);
 			break;
+		case GameId::CuldCept:
+			{
+				createLobby("KANSEN", 100);
+				Lobby::Ptr lobby = createLobby("Beginer_A", 100);
+				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
+				lobby = createLobby("Beginer_B", 100);
+				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
+				lobby = createLobby("_unNormal_A", 100);
+				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
+				lobby = createLobby("_unNormal_B", 100);
+				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
+				lobby = createLobby("_ueExpert_A", 100);
+				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
+				lobby = createLobby("_ueExpert_B", 100);
+				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
+				break;
+			}
 		default:
 			createLobby("2P_Red", 100);
 			createLobby("4P_Yellow", 100);
@@ -319,7 +338,9 @@ public:
 
 	Lobby::Ptr createLobby(const std::string& name, unsigned capacity, bool permanent = true)
 	{
-		if (getLobby(name) == nullptr && capacity > 0)
+		if (capacity <= 1)
+			capacity = 100;
+		if (getLobby(name) == nullptr)
 		{
 			Lobby::Ptr lobby = Lobby::create(*this, getGameName(), name, capacity, permanent);
 			lobbies.push_back(lobby);
@@ -391,6 +412,7 @@ public:
 		case GameId::AeroDancingI: return 9504;
 		case GameId::HundredSwords: return 9505;
 		case GameId::AeroDancingF: return 9506;
+		case GameId::CuldCept: return 9507;
 		default: assert(false); return 0;
 		}
 	}
@@ -405,6 +427,7 @@ public:
 		case GameId::AeroDancingI: return "T-6807M";
 		case GameId::AeroDancingF: return "T-6805M";
 		case GameId::HundredSwords: return "Hundred";
+		case GameId::CuldCept: return "Culdcept";
 		default: assert(false); return "???";
 		}
 	}

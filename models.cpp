@@ -19,7 +19,7 @@ void Lobby::addPlayer(Player::Ptr player)
 		members.push_back(player);
 
 	// Confirm Join Lobby
-	player->send(S_JOIN_LOBBY_ACK, player->fromUtf8(name) + " " + player->fromUtf8(player->name));
+	player->send(S_JOIN_LOBBY_ACK, getSjisName() + " " + player->fromUtf8(player->name));
 
 	std::vector<std::string> playerNames;
 	// Send player info to all members
@@ -99,6 +99,25 @@ Team::Ptr Lobby::getTeam(const std::string& name)
 	return nullptr;
 }
 
+std::string Lobby::getSjisName() const {
+	// Culdcept 2 uses some ascii characters in lobby names
+	return utf8ToSjis(name, parent.getGameId() == GameId::GolfShiyouyo);
+}
+
+void Lobby::setSharedMem(const std::string& data)
+{
+	sharedMem = data;
+	hasSharedMem = !data.empty();
+	if (hasSharedMem)
+	{
+		// send shared mem to lobby members
+		sstream ss;
+		ss << getSjisName() << ' ' << data;
+		for (auto& p : members)
+			p->send(S_LOBBY_SHARED_MEM, ss.str());
+	}
+}
+
 Player::Player(LobbyConnection::Ptr connection, LobbyServer& server)
 	: sharedMem(0x1e), gameId(server.getGameId()), server(server), connection(connection)
 {
@@ -162,7 +181,7 @@ std::vector<uint8_t> Player::getSendDataPacket()
 {
 	sstream ss;
 	if (lobby)
-		ss << fromUtf8(lobby->name) << ' ';
+		ss << lobby->getSjisName() << ' ';
 	else
 		ss << "# ";
 	if (team && team->host == shared_from_this())
@@ -318,5 +337,5 @@ std::string Player::toUtf8(const std::string& str) const {
 }
 
 std::string Player::fromUtf8(const std::string& str) const {
-	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo);
+	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept);
 }

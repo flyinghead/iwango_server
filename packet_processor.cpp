@@ -24,6 +24,7 @@ enum CLIOpcode : uint16_t
 	GET_TEAMS = 0x0F,
 	REFRESH_PLAYERS = 0x10,
 	CHAT_LOBBY = 0x11,
+	SHAREDMEM_LOBBY = 0x1A,
 	SHAREDMEM_PLAYER = 0x1B,
 	// TODO tetris: 001c []	SendWin
 	// TODO tetris: 001d []	SendLoose
@@ -71,7 +72,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	}
 
 	// Is this IP already in the server? IP is assumed to be a WAN IP due to dial-up days. Disabled when debugging.
-#ifndef DEBUG
+#ifdef NDEBUG
 	exists = player->server.IsIPUnique(player);
 	if (exists != nullptr) {
 		exists->name = "";
@@ -132,7 +133,7 @@ static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>
 static void sendLobby(Player::Ptr player, uint16_t opcode, Lobby::Ptr lobby)
 {
 	sstream ss;
-	ss << player->fromUtf8(lobby->name) << ' ' << lobby->members.size()
+	ss << lobby->getSjisName() << ' ' << lobby->members.size()
 	   << ' ' << lobby->capacity << ' ' << lobby->flags
 	   << ' ' << (lobby->hasSharedMem ? lobby->sharedMem : "#")
 	   << " #" << lobby->gameName;
@@ -293,6 +294,11 @@ static void chatTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, con
 		player->team->sendChat(player->name, player->toUtf8(dataAsString));
 }
 
+static void sharedMemLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
+	if (player->lobby != nullptr)
+		player->lobby->setSharedMem(dataAsString);
+}
+
 static void sharedMemPlayerCommand(Player::Ptr player, const std::vector<uint8_t>& data, const std::string&) {
 	player->setSharedMem(data);
 }
@@ -374,7 +380,7 @@ static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const
 		sstream ss;
 		ss << player->fromUtf8(found->name) << " !" << player->server.getName() << ' ';
 		if (found->lobby != nullptr)
-			ss << '!' << player->fromUtf8(found->lobby->name);
+			ss << '!' << found->lobby->getSjisName();
 		else
 			ss << '#';
 		player->send(S_SEARCH_RESULT, ss.str());
@@ -435,6 +441,7 @@ static std::unordered_map<CLIOpcode, CommandHandler> CommandHandlers = {
 		{ SEND_CTCPMSG, sendCTCPMessage },
 		{ EXTRAUSERMEM_ACK, nullCommand },
 		{ LAUNCH_GAME_ACK, nullCommand },
+		{ SHAREDMEM_LOBBY, sharedMemLobbyCommand },
 };
 
 void PacketProcessor::handlePacket(Player::Ptr player, uint16_t opcode, const std::vector<uint8_t>& payload)

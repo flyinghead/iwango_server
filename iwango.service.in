@@ -8,9 +8,8 @@ Type=simple
 Restart=always
 RestartSec=1
 User=INSTALL_USER
-WorkingDirectory=INSTALL_DIR
-ExecStart=INSTALL_DIR/iwango_server
-StandardOutput=append:INSTALL_DIR/iwango.log
+ExecStart=SBINDIR/iwango_server SYSCONFDIR/iwango.cfg
+StandardOutput=append:/var/log/iwango.log
 
 [Install]
 WantedBy=multi-user.target
