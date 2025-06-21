@@ -135,7 +135,7 @@ static void sendLobby(Player::Ptr player, uint16_t opcode, Lobby::Ptr lobby)
 	sstream ss;
 	ss << lobby->getSjisName() << ' ' << lobby->members.size()
 	   << ' ' << lobby->capacity << ' ' << lobby->flags
-	   << ' ' << (lobby->hasSharedMem ? lobby->sharedMem : "#")
+	   << ' ' << (lobby->hasSharedMem ? "*" + lobby->sharedMem : "#")
 	   << " #" << lobby->gameName;
 	player->send(opcode, ss.str());
 }

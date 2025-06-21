@@ -38,7 +38,7 @@ struct {
 	{ "Golf Shiyou Yo 2",			BASE_URL "golfshiyou2.jpg" },
 	{ "Aero Dancing i",				BASE_URL "aerodancing.jpg" },
 	{ "Hundred Swords",				BASE_URL "hundredswords.jpg" },
-	{ "Culdcept",					BASE_URL "culdcept.jpg" },
+	{ "Culdcept II",				BASE_URL "culdcept.jpg" },
 	{ "Aero Dancing F",				BASE_URL "aerodancing-fsd.jpg" },
 };
 

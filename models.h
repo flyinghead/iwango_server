@@ -285,57 +285,7 @@ private:
 class LobbyServer
 {
 public:
-	LobbyServer(GameId gameId, const std::string& name = {})
-		: gameId(gameId)
-	{
-		if (!name.empty())
-			this->name = name;
-		servers.push_back(this);
-		switch (gameId)
-		{
-		case GameId::AeroDancingI:
-			createLobby("QLADI", 100);
-			createLobby("NLADI", 100);
-			createLobby("PLADI", 100);
-			break;
-		case GameId::AeroDancingF:
-			createLobby("Main_Lobby", 100);
-			break;
-		case GameId::HundredSwords:
-			createLobby("Red", 100);
-			createLobby("Yellow", 100);
-			createLobby("Blue", 100);
-			createLobby("Green", 100);
-			createLobby("Purple", 100);
-			createLobby("Orange", 100);
-			break;
-		case GameId::CuldCept:
-			{
-				createLobby("KANSEN", 100);
-				Lobby::Ptr lobby = createLobby("Beginer_A", 100);
-				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
-				lobby = createLobby("Beginer_B", 100);
-				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
-				lobby = createLobby("_unNormal_A", 100);
-				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
-				lobby = createLobby("_unNormal_B", 100);
-				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
-				lobby = createLobby("_ueExpert_A", 100);
-				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
-				lobby = createLobby("_ueExpert_B", 100);
-				lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
-				break;
-			}
-		default:
-			createLobby("2P_Red", 100);
-			createLobby("4P_Yellow", 100);
-			createLobby("2P_Blue", 100);
-			createLobby("2P_Green", 100);
-			createLobby("4P_Purple", 100);
-			createLobby("4P_Orange", 100);
-			break;
-		}
-	}
+	LobbyServer(GameId gameId, const std::string& name = {});
 
 	Lobby::Ptr createLobby(const std::string& name, unsigned capacity, bool permanent = true)
 	{
@@ -403,35 +353,8 @@ public:
 		return gameId;
 	}
 
-	uint16_t getIpPort() const
-	{
-		switch (gameId)
-		{
-		case GameId::Daytona: return 9501;
-		case GameId::Tetris: return 9502;
-		case GameId::GolfShiyouyo: return 9503;
-		case GameId::AeroDancingI: return 9504;
-		case GameId::HundredSwords: return 9505;
-		case GameId::AeroDancingF: return 9506;
-		case GameId::CuldCept: return 9507;
-		default: assert(false); return 0;
-		}
-	}
-
-	std::string getGameName() const
-	{
-		switch (gameId)
-		{
-		case GameId::Daytona: return "Daytona";
-		case GameId::Tetris: return "Tetris";
-		case GameId::GolfShiyouyo: return "Golf";
-		case GameId::AeroDancingI: return "T-6807M";
-		case GameId::AeroDancingF: return "T-6805M";
-		case GameId::HundredSwords: return "Hundred";
-		case GameId::CuldCept: return "Culdcept";
-		default: assert(false); return "???";
-		}
-	}
+	uint16_t getIpPort() const;
+	std::string getGameName() const;
 
 	const std::string& getMotd() const {
 		return motd;
