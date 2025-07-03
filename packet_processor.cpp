@@ -106,9 +106,14 @@ static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const
 	// 5	:0 or :1 (handle index?)
 	if (split.size() > 3)
 		INFO_LOG(player->gameId, "[%s] Player %s console ID: %s", player->getIp().c_str(), player->name.c_str(), split[3].substr(1).c_str());
-	player->send(0x0C, "LOB 999 999 AAA AAA");
+	// response:
+	// 0	auth status (0 is success)
+	// 1	error num (0 is success, 1 banned user, 8 server maintenance, 16 line busy, ...)
+	// 2	limit date?
+	// 3	ignored (but required)
+	player->send(0x0C, "0 0 999 AAA");
 	player->send(S_MOTD, player->server.getMotd());
-	player->send(0xE1);	// Ext MeM ready?
+	player->send(S_EXT_MEM_READY);
 }
 
 static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)

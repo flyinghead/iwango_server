@@ -55,6 +55,7 @@ enum SRVOpcode : uint16_t
 	S_SENDLOG_ACK = 0xCF,
 	S_LOBBY_PLAYER_LIST_END = 0xD9,
 	S_LOBBY_PLAYER_LIST_ITEM = 0xDA,
+	S_EXT_MEM_READY = 0xE1,
 };
 
 using sstream = std::stringstream;
@@ -88,6 +89,7 @@ public:
 	std::shared_ptr<Team> getTeam(const std::string& name);
 	void setSharedMem(const std::string& data);
 	std::string getSjisName() const;
+	void sendSharedMemPlayer(std::shared_ptr<Player> owner, const std::vector<uint8_t>& data);
 
 	std::string name;
 	unsigned flags = 0;
@@ -246,14 +248,9 @@ public:
 			player->send(S_TEAM_CHAT, player->fromUtf8(from + " " + message));
 	}
 
-	void sendSharedMemPlayer(Player::Ptr owner, const std::vector<uint8_t>& data) {
-		for (auto& player : members)
-			player->send(S_PLAYER_SHARED_MEM, Packet::createSharedMemPacket(data, player->fromUtf8(owner->name)));
-	}
-
 	void sendGameServer(Player::Ptr p) {
 		for (auto& player : members)
-			player->send(S_GAME_SERVER, "172.20.100.100 9503");	// FIXME?
+			player->send(S_GAME_SERVER, "172.20.0.1 9510");	// not implemented
 	}
 
 	void launchGame(Player::Ptr p)

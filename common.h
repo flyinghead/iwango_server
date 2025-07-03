@@ -18,6 +18,7 @@ enum class GameId
 	HundredSwords,
 	CuldCept,
 	AeroDancingF,
+	PowerSmash,
 };
 
 inline static GameId identifyGame(const std::string& gameId)
@@ -39,6 +40,8 @@ inline static GameId identifyGame(const std::string& gameId)
 		return GameId::HundredSwords;
 	if (gameId == "T00011T0001110500101")
 		return GameId::CuldCept;
+	if (gameId == "S00001S0000410360101")
+		return GameId::PowerSmash;
 	return GameId::Daytona;
 }
 

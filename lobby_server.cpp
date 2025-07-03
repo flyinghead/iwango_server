@@ -237,6 +237,11 @@ int main(int argc, char *argv[])
 	LobbyAcceptor::Ptr culdceptAcceptor = LobbyAcceptor::create(io_context, culdceptServer);
 	culdceptAcceptor->start();
 
+	LobbyServer powerSmashServer(GameId::PowerSmash, getConfig("PowerSmashServerName", "DCNet"));
+	powerSmashServer.setMotd(getConfig("PowerSmashMOTD", powerSmashServer.getMotd()));
+	LobbyAcceptor::Ptr powerSmashAcceptor = LobbyAcceptor::create(io_context, powerSmashServer);
+	powerSmashAcceptor->start();
+
 	io_context.run();
 
 	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: terminated");

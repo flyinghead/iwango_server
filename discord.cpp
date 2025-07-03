@@ -40,6 +40,7 @@ struct {
 	{ "Hundred Swords",				BASE_URL "hundredswords.jpg" },
 	{ "Culdcept II",				BASE_URL "culdcept.jpg" },
 	{ "Aero Dancing F",				BASE_URL "aerodancing-fsd.jpg" },
+	{ "Power Smash",				BASE_URL "powersmash.jpg" },
 };
 
 #undef BASE_URL

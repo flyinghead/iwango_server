@@ -118,6 +118,11 @@ void Lobby::setSharedMem(const std::string& data)
 	}
 }
 
+void Lobby::sendSharedMemPlayer(Player::Ptr owner, const std::vector<uint8_t>& data) {
+	for (auto& player : members)
+		player->send(S_PLAYER_SHARED_MEM, Packet::createSharedMemPacket(data, player->fromUtf8(owner->name)));
+}
+
 Player::Player(LobbyConnection::Ptr connection, LobbyServer& server)
 	: sharedMem(0x1e), gameId(server.getGameId()), server(server), connection(connection)
 {
@@ -173,8 +178,8 @@ void Player::setSharedMem(const std::vector<uint8_t>& data)
 		return;
 	}
 	memcpy(sharedMem.data(), &data[0], data.size());
-	if (team)
-		team->sendSharedMemPlayer(shared_from_this(), sharedMem);
+	if (lobby)
+		lobby->sendSharedMemPlayer(shared_from_this(), sharedMem);
 }
 
 std::vector<uint8_t> Player::getSendDataPacket()
@@ -241,7 +246,8 @@ void Player::joinTeam(const std::string& name)
 }
 void Player::leaveTeam()
 {
-	if (lobby != nullptr && team != nullptr) {
+	if (lobby != nullptr && team != nullptr)
+	{
 		team->removePlayer(shared_from_this());
 		INFO_LOG(gameId, "Player %s left team %s", this->name.c_str(), team->name.c_str());
 		this->team = nullptr;
@@ -353,9 +359,11 @@ LobbyServer::LobbyServer(GameId gameId, const std::string& name)
 		createLobby("NLADI", 100);
 		createLobby("PLADI", 100);
 		break;
+
 	case GameId::AeroDancingF:
 		createLobby("Main_Lobby", 100);
 		break;
+
 	case GameId::HundredSwords:
 		createLobby("Red", 100);
 		createLobby("Yellow", 100);
@@ -364,6 +372,7 @@ LobbyServer::LobbyServer(GameId gameId, const std::string& name)
 		createLobby("Purple", 100);
 		createLobby("Orange", 100);
 		break;
+
 	case GameId::CuldCept:
 		{
 			createLobby("KANSEN", 100);
@@ -381,6 +390,14 @@ LobbyServer::LobbyServer(GameId gameId, const std::string& name)
 			lobby->setSharedMem("000001000000000000000000000000000000000000000000000000000000");
 			break;
 		}
+
+	case GameId::PowerSmash:
+		createLobby("BEGINNER", 100);
+		createLobby("NORMAL", 100);
+		createLobby("EXPERT", 100);
+		createLobby("EVENT", 100);
+		break;
+
 	default:
 		createLobby("2P_Red", 100);
 		createLobby("4P_Yellow", 100);
@@ -403,6 +420,7 @@ uint16_t LobbyServer::getIpPort() const
 	case GameId::HundredSwords: return 9505;
 	case GameId::AeroDancingF: return 9506;
 	case GameId::CuldCept: return 9507;
+	case GameId::PowerSmash: return 9508;
 	default: assert(false); return 0;
 	}
 }
@@ -418,6 +436,7 @@ std::string LobbyServer::getGameName() const
 	case GameId::AeroDancingF: return "T-6805M";
 	case GameId::HundredSwords: return "Hundred";
 	case GameId::CuldCept: return "Culdcept";
+	case GameId::PowerSmash: return "HDR-0113";
 	default: assert(false); return "???";
 	}
 }
