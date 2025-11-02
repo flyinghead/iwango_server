@@ -41,6 +41,7 @@ struct {
 	{ "Culdcept II",				BASE_URL "culdcept.jpg" },
 	{ "Aero Dancing F",				BASE_URL "aerodancing-fsd.jpg" },
 	{ "Power Smash",				BASE_URL "powersmash.jpg" },
+	{ "Pro Yakyuu Team",			BASE_URL "yakyuunet.png" },
 };
 
 #undef BASE_URL
