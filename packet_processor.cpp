@@ -396,13 +396,16 @@ static void searchCommand(Player::Ptr player, const std::vector<uint8_t>&, const
 
 static void sendCTCPMessage(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	std::vector<std::string> split = splitString(dataAsString, ' ');
-	if (split.size() < 3)
+	auto pos = dataAsString.find(' ');
+	if (pos == std::string::npos)
 		return;
-	std::string opponentName = player->toUtf8(split[0]);
-	Player::Ptr opponent = player->server.getPlayer(opponentName);
-	// Lobby direct message. Team DM would be 0x44
-	opponent->send(S_LOBBY_DM, player->fromUtf8(player->name) + " " + split[2]);
+	std::string recipientName = player->toUtf8(dataAsString.substr(0, pos));
+	std::string message = dataAsString.substr(pos + 1);
+	Player::Ptr recipient = player->server.getPlayer(recipientName);
+	if (recipient == nullptr)
+		return;
+	// CTCP message used to challenge another player
+	recipient->send(S_CTCP_MSG, message);
 }
 
 static void logData(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
