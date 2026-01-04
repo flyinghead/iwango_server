@@ -227,8 +227,14 @@ public:
 				host = members[0];
 
 			// Send Packets
-			for (auto& p : player->lobby->members)
-				p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
+			if (player->lobby != nullptr) {
+				for (auto& p : player->lobby->members)
+					p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
+			}
+			else {
+				for (auto& p : members)
+					p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
+			}
 
 			// Team deleted?
 			if (members.empty())

@@ -132,6 +132,19 @@ void setDiscordWebhook(const std::string& url) {
 	DiscordWebhook = url;
 }
 
+static std::string escapeMarkdown(const std::string& s)
+{
+	std::string ret;
+	for (char c : s)
+	{
+		if (c == '*' || c == '_' || c == '`' || c == '~' || c == '<'
+				|| c == '>' || c == ':' || c == '[' || c == '\\')
+			ret += '\\';
+		ret += c;
+	}
+	return ret;
+}
+
 void discordLobbyJoined(GameId gameId, const std::string& username, const std::string& lobbyName, const std::vector<std::string>& playerList)
 {
 	using the_clock = std::chrono::steady_clock;
@@ -141,20 +154,20 @@ void discordLobbyJoined(GameId gameId, const std::string& username, const std::s
 		return;
 	last_notif = now;
 	Notif notif(gameId);
-	notif.content = "Player **" + username + "** joined lobby **" + lobbyName + "**";
+	notif.content = "Player **" + escapeMarkdown(username) + "** joined lobby **" + escapeMarkdown(lobbyName) + "**";
 	notif.embed.title = "Lobby Players";
 	for (const auto& player : playerList)
-		notif.embed.text += player + "\n";
+		notif.embed.text += escapeMarkdown(player) + "\n";
 	discordNotif(notif);
 }
 
 void discordGameCreated(GameId gameId, const std::string& username, const std::string& gameName, const std::vector<std::string>& playerList)
 {
 	Notif notif(gameId);
-	notif.content = "Player **" + username + "** created team **" + gameName + "**";
+	notif.content = "Player **" + escapeMarkdown(username) + "** created team **" + escapeMarkdown(gameName) + "**";
 	notif.embed.title = "Lobby Players";
 	for (const auto& player : playerList)
-		notif.embed.text += player + "\n";
+		notif.embed.text += escapeMarkdown(player) + "\n";
 
 	discordNotif(notif);
 }

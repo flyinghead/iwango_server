@@ -119,10 +119,13 @@ static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const
 static void refreshPlayersCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	if (split[0].empty()) {
+	if (split[0].empty())
+	{
 		// Get all players
-		for (auto& p : player->lobby->members)
-			player->send(S_PLAYER_LIST_ITEM, p->getSendDataPacket());
+		if (player->lobby != nullptr) {
+			for (auto& p : player->lobby->members)
+				player->send(S_PLAYER_LIST_ITEM, p->getSendDataPacket());
+		}
 	}
 	else
 	{
@@ -334,11 +337,13 @@ static void reconnectCommand(Player::Ptr player, const std::vector<uint8_t>& dat
 }
 
 static void launchRequestCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string&) {
-	player->team->sendGameServer(player);
+	if (player->team != nullptr && player->team->host == player)
+		player->team->sendGameServer(player);
 }
 
 static void launchGameCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string&) {
-	player->team->launchGame(player);
+	if (player->team != nullptr)
+		player->team->launchGame(player);
 }
 
 static std::vector<uint8_t> test(int num)
