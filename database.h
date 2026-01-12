@@ -16,14 +16,9 @@
 */
 #pragma once
 #include "common.h"
+#include <dcserver/database.hpp>
 #include <string>
 #include <vector>
-
-class AlreadyExistsException : public std::runtime_error
-{
-public:
-	AlreadyExistsException() : std::runtime_error("This name already exists") {}
-};
 
 void setDatabasePath(const std::string& databasePath);
 bool createHandle(GameId gameId, const std::string& user, int index, const std::string& handle);

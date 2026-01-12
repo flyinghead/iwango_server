@@ -15,134 +15,27 @@
     along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #include "discord.h"
-#include <curl/curl.h>
-#include "json.hpp"
-#include <thread>
-#include <atomic>
+#include <dcserver/discord.hpp>
 #include <chrono>
 
-static std::string DiscordWebhook;
-static std::atomic_int threadCount;
-
-using namespace nlohmann;
-
-#define BASE_URL "https://dcnet.flyca.st/gamepic/"
-
-struct {
-	const char *name;
-	const char *url;
-} Games[] = {
-	{ "Daytona USA",				BASE_URL "daytona.jpg" },
-	{ "Daytona USA",				BASE_URL "daytona.jpg" },
-	{ "Sega Tetris",				BASE_URL "segatetris.jpg" },
-	{ "Golf Shiyou Yo 2",			BASE_URL "golfshiyou2.jpg" },
-	{ "Aero Dancing i",				BASE_URL "aerodancing.jpg" },
-	{ "Hundred Swords",				BASE_URL "hundredswords.jpg" },
-	{ "Culdcept II",				BASE_URL "culdcept.jpg" },
-	{ "Aero Dancing F",				BASE_URL "aerodancing-fsd.jpg" },
-	{ "Power Smash",				BASE_URL "powersmash.jpg" },
-	{ "Pro Yakyuu Team",			BASE_URL "yakyuunet.png" },
-};
-
-#undef BASE_URL
-
-class Notif
+const char *getDCNetGameId(GameId gameId)
 {
-public:
-	Notif(GameId gameId) : gameId(gameId) {}
-
-	std::string to_json() const
-	{
-		json embeds;
-		embeds.push_back({
-			{ "author",
-				{
-					{ "name", Games[(int)gameId].name },
-					{ "icon_url", Games[(int)gameId].url }
-				},
-			},
-			{ "title", embed.title },
-			{ "description", embed.text },
-			{ "color", 9118205 },
-		});
-
-		json j = {
-			{ "content", content },
-			{ "embeds", embeds },
-		};
-		return j.dump(4);
-	}
-
-	GameId gameId;
-	std::string content;
-	struct {
-		std::string title;
-		std::string text;
-	} embed;
-};
-
-static void postWebhook(Notif notif)
-{
-	CURL *curl = curl_easy_init();
-	if (curl == nullptr)
-	{
-		ERROR_LOG(notif.gameId, "Can't create curl handle");
-		threadCount.fetch_sub(1);
-		return;
-	}
-	CURLcode res;
-	curl_easy_setopt(curl, CURLOPT_URL, DiscordWebhook.c_str());
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "DCNet-DiscordWebhook");
-	curl_slist *headers = curl_slist_append(nullptr, "Content-Type: application/json");
-	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-	std::string json = notif.to_json();
-	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json.c_str());
-
-	res = curl_easy_perform(curl);
-	if (res != CURLE_OK) {
-		ERROR_LOG(notif.gameId, "curl error: %d", res);
-	}
+	static const char *gameIds[] {
+		"daytona",
+		"daytona",
+		"segatetris",
+		"golfshiyou2",
+		"aeroi",
+		"hundredswords",
+		"culdcept",
+		"aerof",
+		"powersmash",
+		"yakyuunet"
+	};
+	if (gameId == GameId::Unknown || (size_t)gameId >= std::size(gameIds))
+		return nullptr;
 	else
-	{
-		long code;
-		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &code);
-		if (code < 200 || code >= 300)
-			ERROR_LOG(notif.gameId, "Discord error: %ld", code);
-	}
-	curl_slist_free_all(headers);
-	curl_easy_cleanup(curl);
-	threadCount.fetch_sub(1);
-}
-
-static void discordNotif(const Notif& notif)
-{
-	if (DiscordWebhook.empty())
-		return;
-	if (threadCount.fetch_add(1) >= 5) {
-		threadCount.fetch_sub(1);
-		WARN_LOG(notif.gameId, "Discord max thread count reached");
-		return;
-	}
-	std::thread thread(postWebhook, notif);
-	thread.detach();
-}
-
-void setDiscordWebhook(const std::string& url) {
-	DiscordWebhook = url;
-}
-
-static std::string escapeMarkdown(const std::string& s)
-{
-	std::string ret;
-	for (char c : s)
-	{
-		if (c == '*' || c == '_' || c == '`' || c == '~' || c == '<'
-				|| c == '>' || c == ':' || c == '[' || c == '\\')
-			ret += '\\';
-		ret += c;
-	}
-	return ret;
+		return gameIds[(int)gameId];
 }
 
 void discordLobbyJoined(GameId gameId, const std::string& username, const std::string& lobbyName, const std::vector<std::string>& playerList)
@@ -153,21 +46,21 @@ void discordLobbyJoined(GameId gameId, const std::string& username, const std::s
 	if (last_notif != the_clock::time_point() && now - last_notif < std::chrono::minutes(5))
 		return;
 	last_notif = now;
-	Notif notif(gameId);
-	notif.content = "Player **" + escapeMarkdown(username) + "** joined lobby **" + escapeMarkdown(lobbyName) + "**";
+	Notif notif;
+	notif.content = "Player **" + discordEscape(username) + "** joined lobby **" + discordEscape(lobbyName) + "**";
 	notif.embed.title = "Lobby Players";
 	for (const auto& player : playerList)
-		notif.embed.text += escapeMarkdown(player) + "\n";
-	discordNotif(notif);
+		notif.embed.text += discordEscape(player) + "\n";
+	discordNotif(getDCNetGameId(gameId), notif);
 }
 
 void discordGameCreated(GameId gameId, const std::string& username, const std::string& gameName, const std::vector<std::string>& playerList)
 {
-	Notif notif(gameId);
-	notif.content = "Player **" + escapeMarkdown(username) + "** created team **" + escapeMarkdown(gameName) + "**";
+	Notif notif;
+	notif.content = "Player **" + discordEscape(username) + "** created team **" + discordEscape(gameName) + "**";
 	notif.embed.title = "Lobby Players";
 	for (const auto& player : playerList)
-		notif.embed.text += escapeMarkdown(player) + "\n";
+		notif.embed.text += discordEscape(player) + "\n";
 
-	discordNotif(notif);
+	discordNotif(getDCNetGameId(gameId), notif);
 }

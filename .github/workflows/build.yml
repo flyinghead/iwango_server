@@ -12,7 +12,16 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update
-          apt-get -y install build-essential git libcurl4-gnutls-dev libasio-dev libicu-dev libcurl4-gnutls-dev libsqlite3-dev
+          apt-get -y install build-essential git libcurl4-gnutls-dev libasio-dev libicu-dev libsqlite3-dev cmake
+
+      - name: Build libdcserver
+        run: |
+          cd ..
+          git clone https://github.com/flyinghead/libdcserver
+          cd libdcserver
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --config Release
+          cmake --build build --config Release --target install
 
       - uses: actions/checkout@v4
         with:

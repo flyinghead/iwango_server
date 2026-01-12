@@ -1,6 +1,6 @@
 #pragma once
-#include "asio.h"
-#include "shared_this.h"
+#include <dcserver/asio.hpp>
+#include <dcserver/shared_this.hpp>
 
 class GateConnection;
 

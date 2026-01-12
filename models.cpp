@@ -2,6 +2,7 @@
 #include "lobby_server.h"
 #include "discord.h"
 #include "database.h"
+#include <dcserver/status.hpp>
 
 std::vector<LobbyServer *> LobbyServer::servers;
 
@@ -438,5 +439,27 @@ std::string LobbyServer::getGameName() const
 	case GameId::CuldCept: return "Culdcept";
 	case GameId::PowerSmash: return "HDR-0113";
 	default: assert(false); return "???";
+	}
+}
+
+void LobbyServer::updateStatus()
+{
+	static constexpr GameId games[] {
+			GameId::Daytona, GameId::AeroDancingI, GameId::AeroDancingF, GameId::Tetris,
+			GameId::GolfShiyouyo, GameId::HundredSwords, GameId::PowerSmash, GameId::CuldCept
+	};
+	for (GameId gameId : games)
+	{
+		LobbyServer *server = getServer(gameId);
+		int playerCount = server->players.size();
+		int gameCount = 0;
+		for (Lobby::Ptr lobby : server->lobbies)
+			gameCount += lobby->teams.size();
+		statusUpdate(getDCNetGameId(gameId), playerCount, gameCount);
+	}
+	try {
+		statusCommit("iwango");
+	} catch (const std::exception& e) {
+		ERROR_LOG(GameId::Unknown, "statusCommit failed: %s", e.what());
 	}
 }

@@ -1,5 +1,5 @@
 #
-# build dependencies: libasio-dev libicu-dev libcurl-dev libsqlite3-dev
+# build dependencies: libasio-dev libicu-dev libsqlite3-dev libdcserver
 # runtime dependencies: fcgiwrap
 #
 prefix = /usr/local
@@ -9,13 +9,13 @@ bindir = $(exec_prefix)/bin
 sysconfdir = $(prefix)/etc
 libexecdir = $(exec_prefix)/libexec
 CXXFLAGS=-std=c++17 -g -O3 -Wall -DNDEBUG # -fsanitize=address -static-libasan
-DEPS=asio.h database.h models.h lobby_server.h gate_server.h common.h vms.h sega_crypto.h json.hpp discord.h
+DEPS=database.h models.h lobby_server.h gate_server.h common.h vms.h sega_crypto.h discord.h
 USER=dcnet
 
 all: iwango_server keycutter keycutter.cgi culdcept-gamedata
 
 iwango_server: lobby_server.o models.o packet_processor.o gate_server.o database.o discord.o common.o
-	$(CXX) $(CXXFLAGS) -o $@ lobby_server.o models.o packet_processor.o gate_server.o database.o discord.o common.o -lpthread -licuuc -lcurl -lsqlite3
+	$(CXX) $(CXXFLAGS) -o $@ lobby_server.o models.o packet_processor.o gate_server.o database.o discord.o common.o -lpthread -licuuc -lsqlite3 -ldcserver -Wl,-rpath,/usr/local/lib
 
 keycutter: keycutter.o sega_crypto.o
 	$(CXX) $(CXXFLAGS) -o keycutter keycutter.o sega_crypto.o

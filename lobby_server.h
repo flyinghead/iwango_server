@@ -1,6 +1,6 @@
 #pragma once
-#include "shared_this.h"
-#include "asio.h"
+#include <dcserver/asio.hpp>
+#include <dcserver/shared_this.hpp>
 #include <stdio.h>
 #include <vector>
 

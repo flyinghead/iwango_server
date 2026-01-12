@@ -1,5 +1,4 @@
 #include "common.h"
-#include "shared_this.h"
 #include "database.h"
 #include "gate_server.h"
 #include "models.h"
@@ -209,7 +208,7 @@ private:
 					sendPacket(0x3F3, "1 " + toSjis(handlename, gameId));
 				else
 					sendPacket(ERROR1);
-			} catch (const AlreadyExistsException&) {
+			} catch (const UniqueConstraintViolation&) {
 				sendPacket(NAME_IN_USE1);
 			}
 		}
@@ -234,7 +233,7 @@ private:
 					sendPacket(0x3F4, "1 " + toSjis(newHandleName, gameId));
 				else
 					sendPacket(ERROR1);
-			} catch (const AlreadyExistsException&) {
+			} catch (const UniqueConstraintViolation&) {
 				sendPacket(NAME_IN_USE1);
 			}
 		}

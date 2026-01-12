@@ -19,6 +19,6 @@
 #include <string>
 #include <vector>
 
-void setDiscordWebhook(const std::string& url);
+const char *getDCNetGameId(GameId gameId);
 void discordLobbyJoined(GameId gameId, const std::string& username, const std::string& lobbyName, const std::vector<std::string>& playerList);
 void discordGameCreated(GameId gameId, const std::string& username, const std::string& gameName, const std::vector<std::string>& playerList);

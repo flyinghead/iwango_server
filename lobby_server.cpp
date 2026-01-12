@@ -1,8 +1,8 @@
 #include "lobby_server.h"
 #include "gate_server.h"
 #include "models.h"
-#include "discord.h"
 #include "database.h"
+#include <dcserver/status.hpp>
 #include <fstream>
 #include <unordered_map>
 
@@ -148,6 +148,32 @@ private:
 	friend super;
 };
 
+class StatusUpdater
+{
+public:
+	StatusUpdater(asio::io_context& io_context)
+		: io_context(io_context), timer(io_context)
+	{
+	}
+
+	void start() {
+		onTimer({});
+	}
+
+	void onTimer(const std::error_code& ec)
+	{
+		if (ec)
+			return;
+		LobbyServer::updateStatus();
+		timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(statusGetInterval()));
+		timer.async_wait(std::bind(&StatusUpdater::onTimer, this, asio::placeholders::error));
+	}
+
+private:
+	asio::io_context& io_context;
+	asio::steady_timer timer;
+};
+
 static void breakhandler(int signum) {
 	io_context.stop();
 }
@@ -194,7 +220,6 @@ int main(int argc, char *argv[])
 	setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
 
 	loadConfig(argc >= 2 ? argv[1] : "iwango.cfg");
-	setDiscordWebhook(getConfig("DiscordWebhook", ""));
 	setDatabasePath(getConfig("DatabasePath", "/var/lib/iwango/iwango.db"));
 
 	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: Gate Server by Ioncannon");
@@ -241,6 +266,9 @@ int main(int argc, char *argv[])
 	powerSmashServer.setMotd(getConfig("PowerSmashMOTD", powerSmashServer.getMotd()));
 	LobbyAcceptor::Ptr powerSmashAcceptor = LobbyAcceptor::create(io_context, powerSmashServer);
 	powerSmashAcceptor->start();
+
+	StatusUpdater statusUpdater(io_context);
+	statusUpdater.start();
 
 	io_context.run();
 

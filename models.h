@@ -1,6 +1,6 @@
 #pragma once
-#include "shared_this.h"
 #include "common.h"
+#include <dcserver/shared_this.hpp>
 #include <string>
 #include <memory>
 #include <vector>
@@ -374,6 +374,8 @@ public:
 				return server;
 		return nullptr;
 	}
+
+	static void updateStatus();
 
 private:
 	GameId gameId;
