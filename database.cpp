@@ -22,9 +22,12 @@
 
 static std::string databasePath = "iwango.db";
 
-void setDatabasePath(const std::string& databasePath) {
-	if (!databasePath.empty())
+void setDatabasePath(const std::string& databasePath)
+{
+	if (!databasePath.empty()) {
 		::databasePath = databasePath;
+		Database db(databasePath);
+	}
 }
 
 //

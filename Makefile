@@ -8,7 +8,8 @@ sbindir = $(exec_prefix)/sbin
 bindir = $(exec_prefix)/bin
 sysconfdir = $(prefix)/etc
 libexecdir = $(exec_prefix)/libexec
-CXXFLAGS=-std=c++17 -g -O3 -Wall -DNDEBUG # -fsanitize=address -static-libasan
+localstatedir = /var/local
+CXXFLAGS=-std=c++17 -g -O3 -Wall -DNDEBUG "-DLOCALSTATEDIR=\"$(localstatedir)\"" # -fsanitize=address -static-libasan
 DEPS=database.h models.h lobby_server.h gate_server.h common.h vms.h sega_crypto.h discord.h
 USER=dcnet
 
@@ -41,14 +42,15 @@ install: iwango_server keycutter.cgi
 	cp -n iwango.cfg $(DESTDIR)$(sysconfdir)
 
 iwango.service: iwango.service.in Makefile
-	sed -e "s/INSTALL_USER/$(USER)/g" -e "s:SBINDIR:$(sbindir):g" -e "s:SYSCONFDIR:$(sysconfdir):g" < $< > $@
+	sed -e "s/INSTALL_USER/$(USER)/g" -e "s:SBINDIR:$(sbindir):g" -e "s:SYSCONFDIR:$(sysconfdir):g" -e "s:LOCALSTATEDIR:$(localstatedir):g" < $< > $@
 
 installservice: iwango.service
+	mkdir -p $(localstatedir)/log
 	mkdir -p /usr/lib/systemd/system/
 	cp $< /usr/lib/systemd/system/
 	systemctl enable $<
 
 createdb: iwango.sql
-	mkdir -p /var/lib/iwango
-	sqlite3 /var/lib/iwango/iwango.db < iwango.sql
-	chown $(USER):$(USER) /var/lib/iwango /var/lib/iwango/iwango.db
+	mkdir -p $(localstatedir)/lib/iwango
+	sqlite3 $(localstatedir)/lib/iwango/iwango.db < iwango.sql
+	chown $(USER):$(USER) $(localstatedir)/lib/iwango $(localstatedir)/lib/iwango/iwango.db

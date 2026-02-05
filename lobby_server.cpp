@@ -220,7 +220,12 @@ int main(int argc, char *argv[])
 	setvbuf(stdout, nullptr, _IOLBF, BUFSIZ);
 
 	loadConfig(argc >= 2 ? argv[1] : "iwango.cfg");
-	setDatabasePath(getConfig("DatabasePath", "/var/lib/iwango/iwango.db"));
+	try {
+		setDatabasePath(getConfig("DatabasePath", LOCALSTATEDIR "/lib/iwango/iwango.db"));
+	} catch (const std::exception& e) {
+		fprintf(stderr, "Database error: %s\n", e.what());
+		return 1;
+	}
 
 	NOTICE_LOG(GameId::Unknown, "IWANGO Emulator: Gate Server by Ioncannon");
 	GateServer::Ptr gateServer = GateServer::create(io_context, 9500);
