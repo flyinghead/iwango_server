@@ -8,6 +8,7 @@
 #include <vector>
 #include <cassert>
 #include <cstring>
+#include <ctime>
 
 static uint8_t P_TABLE[] =
 {
