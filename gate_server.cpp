@@ -10,7 +10,7 @@
 using sstream = std::stringstream;
 
 static std::string toSjis(const std::string& str, GameId gameId) {
-	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept);
+	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept || gameId == GameId::RuneJade);
 }
 
 class GateConnection : public SharedThis<GateConnection>
@@ -21,8 +21,7 @@ public:
 	}
 
 	void receive() {
-		recvBuffer.clear();	// FIXME do we have to handle more than 1 msg per buffer?
-		asio::async_read_until(socket, asio::dynamic_vector_buffer(recvBuffer), packetMatcher,
+		asio::async_read_until(socket, recvBuffer, packetMatcher,
 				std::bind(&GateConnection::onReceive, shared_from_this(), asio::placeholders::error, asio::placeholders::bytes_transferred));
 	}
 
@@ -95,9 +94,10 @@ private:
 			return;
 		}
 		// Grab data and process if correct.
-		std::string payload = std::string(&recvBuffer[2], &recvBuffer[len]);
+		std::string payload = std::string(&recvBuffer.bytes()[2], &recvBuffer.bytes()[len]);
 		INFO_LOG(GameId::Unknown, "gate: [%s] Request [%s]", socket.remote_endpoint().address().to_string().c_str(), payload.c_str());
 		processRequest(payload);
+		recvBuffer.consume(len);
 		receive();
 	}
 
@@ -108,6 +108,10 @@ private:
 		memcpy(&sendBuffer[sendIdx + 4], payload.data(), payload.length());
 		sendIdx += 4 + payload.length();
 		send();
+	}
+
+	bool isAnonymous(const std::string& userName) {
+		return userName == "flycast1" || userName == "flycast2" || userName == "dream";
 	}
 
 	//What is 0x3F6 and 0x3FF for?
@@ -140,28 +144,29 @@ private:
 				return;
 			}
 			GameId gameId = identifyGame(split[2]);
-
 			std::string userName = split[1];
-			if (userName == "flycast1" || userName == "flycast2" || userName == "dream")
+			std::string handleName;
+			if (gameId != GameId::RuneJade)
 			{
-				// Forcibly assign a 'PlayerN' handle
-				std::string handleName;
-				LobbyServer *server = LobbyServer::getServer(gameId);
-				for (int i = 1; i < 100 && server != nullptr; i++)
+				if (isAnonymous(userName))
 				{
-					handleName =  "Player" + std::to_string(i);
-					if (server->getPlayer(handleName) == nullptr)
-						break;
-					handleName = "";
+						// Forcibly assign a 'PlayerN' handle
+						std::string handleName;
+						LobbyServer *server = LobbyServer::getServer(gameId);
+						for (int i = 1; i < 100 && server != nullptr; i++)
+						{
+							handleName =  "Player" + std::to_string(i);
+							if (server->getPlayer(handleName) == nullptr)
+								break;
+							handleName = "";
+						}
+						if (!handleName.empty())
+							sendPacket(0x3F2, "1" + toSjis(handleName, gameId));
+						else
+							sendPacket(0x3F2);
+						return;
 				}
-				if (!handleName.empty())
-					sendPacket(0x3F2, "1" + toSjis(handleName, gameId));
-				else
-					sendPacket(0x3F2);
-			}
-			else
-			{
-				std::string handleName = userName;
+				handleName = userName;
 				std::transform(handleName.begin(), handleName.end(), handleName.begin(), [](char c) {
 					if (c == ' ' || c == '#' || c == '&' || c == '*' || c == '=')
 						return '_';
@@ -176,18 +181,18 @@ private:
 					handleName = handleName.substr(0, maxLength - 3) + ".us";
 				else
 					handleName = handleName.substr(0, maxLength);
-				std::vector<std::string> handles = getHandles(gameId, userName, handleName);
-				sstream ss;
-				for (unsigned i = 0; i < handles.size(); i++)
-				{
-					if (i > 0)
-						ss << ' ';
-					ss << (i + 1) << toSjis(handles[i], gameId);
-				}
-				sendPacket(0x3F2, ss.str());
 			}
+			std::vector<std::string> handles = getHandles(gameId, userName, handleName);
+			sstream ss;
+			for (unsigned i = 0; i < handles.size(); i++)
+			{
+				if (i > 0)
+					ss << ' ';
+				ss << (i + 1) << toSjis(handles[i], gameId);
+			}
+			sendPacket(0x3F2, ss.str());
 		}
-		else if (split[0 ]== "HANDLE_ADD")
+		else if (split[0] == "HANDLE_ADD")
 		{
 			if (split.size() < 5) {
 				sendPacket(ERROR1);
@@ -195,7 +200,7 @@ private:
 			}
 
 			std::string userName = split[1];
-			if (userName == "flycast1" || userName == "flycast2" || userName == "dream") {
+			if (isAnonymous(userName)) {
 				sendPacket(NAME_IN_USE1);
 				return;
 			}
@@ -220,7 +225,7 @@ private:
 			}
 
 			std::string userName = split[1];
-			if (userName == "flycast1" || userName == "flycast2" || userName == "dream") {
+			if (isAnonymous(userName)) {
 				sendPacket(NAME_IN_USE1);
 				return;
 			}
@@ -263,7 +268,7 @@ private:
 	};
 	asio::io_context& io_context;
 	asio::ip::tcp::socket socket;
-	std::vector<uint8_t> recvBuffer;
+	DynamicBuffer recvBuffer;
 	std::array<uint8_t, 1024> sendBuffer;
 	size_t sendIdx = 0;
 	bool sending = false;

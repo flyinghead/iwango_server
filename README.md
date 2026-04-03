@@ -4,8 +4,8 @@ A server emulator for the IWANGO lobby suite for Dreamcast.
 
 # LobbyEngine Games
 
-* Aero Dancer i
-* Culdacept
+* Aero Dancer i/F
+* Culdcept II
 * Daytona USA
 * Golf Shiyouyo 2
 * Hundred Swords

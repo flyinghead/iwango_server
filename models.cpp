@@ -66,12 +66,14 @@ void Lobby::sendChat(const std::string& from, const std::string& message)
 Team::Ptr Lobby::createTeam(Player::Ptr creator, const std::string& name, unsigned capacity, const std::string& type)
 {
 	Team::Ptr team = Team::create(shared_from_this(), name, capacity, creator);
+	if (type == "SPECTATOR")
+		team->flags = 2;
 	teams.push_back(team);
 	creator->team = team;
 	INFO_LOG(creator->gameId, "%s created team %s", creator->name.c_str(), name.c_str());
 
 	sstream ss;
-	ss << creator->fromUtf8(name) << ' ' << creator->fromUtf8(creator->name) << ' ' << capacity << " 0 " << gameName;
+	ss << creator->fromUtf8(name) << ' ' << creator->fromUtf8(creator->name) << ' ' << capacity << ' ' << team->flags << ' ' << gameName;
 	std::vector<std::string> playerNames;
 	for (auto& p : members) {
 		p->send(S_NEW_TEAM, ss.str());
@@ -226,7 +228,7 @@ void Player::createTeam(const std::string& name, unsigned capacity, const std::s
 		send(S_TEAM_NAME_EXISTS);
 	}
 }
-void Player::joinTeam(const std::string& name)
+void Player::joinTeam(const std::string& name, bool spectator)
 {
 	if (lobby != nullptr)
 	{
@@ -236,9 +238,12 @@ void Player::joinTeam(const std::string& name)
 			return; // TODO Some Error, team didn't exist
 		}
 
-		if (team->addPlayer(shared_from_this())) {
+		if (team->addPlayer(shared_from_this(), spectator))
+		{
 			this->team = team;
-			INFO_LOG(gameId, "Player %s joined team %s", this->name.c_str(), team->name.c_str());
+			this->spectator = spectator;
+			INFO_LOG(gameId, "Player %s joined team %s%s", this->name.c_str(), team->name.c_str(),
+					spectator ? " as spectator" : "");
 		}
 	}
 	else {
@@ -260,25 +265,34 @@ void Player::leaveTeam()
 
 void Player::getExtraMem(const std::string& playerName, int offset, int length)
 {
-	Player::Ptr player = server.getPlayer(playerName);
-	if (player == nullptr) {
+	extraMemPlayer = server.getPlayer(playerName);
+	if (extraMemPlayer == nullptr) {
 		WARN_LOG(gameId, "Player::getExtraMem: user %s not found", playerName.c_str());
 		return;
 	}
-	if ((int)player->extraUserMem.size() < offset + length)
-		player->extraUserMem.resize(offset + length);
+	if ((int)extraMemPlayer->extraUserMem.size() < offset + length)
+		extraMemPlayer->extraUserMem.resize(offset + length);
 	send(S_EXTUSER_MEM_START);
-	for (uint16_t i = 0; length > 0 && offset < (int)player->extraUserMem.size(); i++)
-	{
-		int chunksz = std::min(length, 200);
-		std::vector<uint8_t> payload(2 + chunksz);
-		*(uint16_t *)&payload[0] = i;
-		memcpy(&payload[2], &player->extraUserMem[offset], chunksz);
-		length -= chunksz;
-		offset += chunksz;
-		send(S_EXTUSER_MEM_CHUNK, payload);
+	extraMemOffset = offset;
+	extraMemEnd = offset + length;
+	extraMemChunkNum = 0;
+}
+
+void Player::sendExtraMem()
+{
+	if (extraMemPlayer == nullptr)
+		return;
+	if (extraMemOffset >= extraMemEnd || extraMemOffset >= (int)extraMemPlayer->extraUserMem.size()) {
+		send(S_EXTUSER_MEM_END);
+		extraMemPlayer = nullptr;
+		return;
 	}
-	send(S_EXTUSER_MEM_END);
+	int chunksz = std::min(extraMemEnd - extraMemOffset, 200);
+	std::vector<uint8_t> payload(2 + chunksz);
+	*(uint16_t *)&payload[0] = extraMemChunkNum++;
+	memcpy(&payload[2], &extraMemPlayer->extraUserMem[extraMemOffset], chunksz);
+	extraMemOffset += chunksz;
+	send(S_EXTUSER_MEM_CHUNK, payload);
 }
 
 void Player::startExtraMem(int offset, int length)
@@ -344,7 +358,67 @@ std::string Player::toUtf8(const std::string& str) const {
 }
 
 std::string Player::fromUtf8(const std::string& str) const {
-	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept);
+	return utf8ToSjis(str, gameId == GameId::GolfShiyouyo || gameId == GameId::CuldCept || gameId == GameId::RuneJade);
+}
+
+bool Team::addPlayer(Player::Ptr player, bool spectator)
+{
+	if (!spectator && members.size() == capacity)
+		return false;
+	members.push_back(player);
+
+	// Build player string
+	sstream ss;
+	ss << name;
+	for (auto& p : members)
+		ss << ' ' << p->name;
+
+	// Send packet to all members
+	for (auto& p : player->lobby->members)
+		p->send(S_TEAM_JOINED, p->fromUtf8(ss.str()));
+
+	return true;
+}
+
+bool Team::removePlayer(Player::Ptr player)
+{
+	auto it = std::find(members.begin(), members.end(), player);
+	if (it != members.end())
+	{
+		members.erase(it);
+
+		// Change host
+		if (host == player && !members.empty())
+			host = members[0];
+
+		// Send Packets
+		// FIXME player->lobby is null! yes, lobby can be null, not sure how
+		if (player->lobby != nullptr)
+		{
+			for (auto& p : player->lobby->members)
+				p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
+		}
+		else
+		{
+			for (auto& p : members)
+				p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
+		}
+
+		// Team deleted?
+		if (members.empty())
+			parent->deleteTeam(shared_from_this());
+		return true;
+	}
+	else {
+		WARN_LOG(player->gameId, "Player %s not found in team %s", player->name.c_str(), name.c_str());
+		return false;
+	}
+}
+
+void Team::sendGameServer(Player::Ptr p)
+{
+	for (auto& player : members)
+		player->send(S_GAME_SERVER, "172.20.0.1 9510");	// not implemented
 }
 
 LobbyServer::LobbyServer(GameId gameId, const std::string& name)
@@ -399,6 +473,18 @@ LobbyServer::LobbyServer(GameId gameId, const std::string& name)
 		createLobby("EVENT", 100);
 		break;
 
+	case GameId::YakyuuTeam:
+		createLobby("YAKYUASO-1", 100);
+		createLobby("YAKYUASO-2", 100);
+		createLobby("YAKYUASO-3", 100);
+		createLobby("YAKYUASO-4", 100);
+		createLobby("YAKYUASO-5", 100);
+		break;
+
+	case GameId::RuneJade:
+		// Rune Jade creates its own lobby
+		break;
+
 	default:
 		createLobby("2P_Red", 100);
 		createLobby("4P_Yellow", 100);
@@ -422,6 +508,8 @@ uint16_t LobbyServer::getIpPort() const
 	case GameId::AeroDancingF: return 9506;
 	case GameId::CuldCept: return 9507;
 	case GameId::PowerSmash: return 9508;
+	case GameId::YakyuuTeam: return 9509;
+	case GameId::RuneJade: return 9510;
 	default: assert(false); return 0;
 	}
 }
@@ -438,6 +526,8 @@ std::string LobbyServer::getGameName() const
 	case GameId::HundredSwords: return "Hundred";
 	case GameId::CuldCept: return "Culdcept";
 	case GameId::PowerSmash: return "HDR-0113";
+	case GameId::YakyuuTeam: return "HDR-0091";
+	case GameId::RuneJade: return "RUNEJADE";
 	default: assert(false); return "???";
 	}
 }
@@ -446,7 +536,8 @@ void LobbyServer::updateStatus()
 {
 	static constexpr GameId games[] {
 			GameId::Daytona, GameId::AeroDancingI, GameId::AeroDancingF, GameId::Tetris,
-			GameId::GolfShiyouyo, GameId::HundredSwords, GameId::PowerSmash, GameId::CuldCept
+			GameId::GolfShiyouyo, GameId::HundredSwords, GameId::PowerSmash, GameId::CuldCept,
+			GameId::RuneJade
 	};
 	for (GameId gameId : games)
 	{

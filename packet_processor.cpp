@@ -34,18 +34,22 @@ enum CLIOpcode : uint16_t
 	CHAT_TEAM = 0x23,
 	CREATE_TEAM = 0x24,
 	JOIN_TEAM = 0x25,
-	// TODO SendCTCPMessage aero dancing: 0x26 -> Player1 Player2 CRI_LBY:1000    (match request)
-	//                           opponent source      or 2000, 2001
 	SEND_CTCPMSG = 0x26,
 	EXTRAUSERMEM_ACK = 0x28,
 	GET_EXTRAUSERMEM = 0x29,
 	REGIST_EXTRAUSERMEM_START = 0x2A,
 	REGIST_EXTRAUSERMEM_TRANSFER = 0x2B,
 	REGIST_EXTRAUSERMEM_END = 0x2C,
+	JOIN_TEAM_SPECTATOR = 0x2D,
+	LEAVE_TEAM_SPECTATOR = 0x2E,
+	CREATE_LOBBY = 0x3A,
+	CREATE_GAME = 0x3B,
 	LEAVE_LOBBY = 0x3C,
 	JOIN_GROUP = 0x3F,
 	LAUNCH_GAME = 0x65,
 	REFRESH_USERS = 0x67,
+	LAUNCH_REQUEST_SINGLE = 0x6a,
+	RJ_REQUEST_RANKING = 0x6b,
 };
 
 static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
@@ -110,8 +114,8 @@ static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const
 	// 0	auth status (0 is success)
 	// 1	error num (0 is success, 1 banned user, 8 server maintenance, 16 line busy, ...)
 	// 2	limit date?
-	// 3	ignored (but required)
-	player->send(0x0C, "0 0 999 AAA");
+	// 3	header? title? first line displayed by Rune Jade, ignored by all other games (required)
+	player->send(0x0C, "0 0 999 Hello");
 	player->send(S_MOTD, player->server.getMotd());
 	player->send(S_EXT_MEM_READY);
 }
@@ -204,7 +208,7 @@ static void refreshTeamsCommand(Player::Ptr player, const std::vector<uint8_t>&,
 				ss << ' ';
 				if (team->host == p)
 					ss << '*';
-				else
+				if (!p->spectator)
 					ss << '#';
 				ss << player->fromUtf8(p->name);
             }
@@ -231,7 +235,12 @@ static void createTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, c
 static void joinTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
 	std::vector<std::string> split = splitString(dataAsString, ' ');
-	player->joinTeam(player->toUtf8(split[0]));
+	player->joinTeam(player->toUtf8(split[0]), false);
+}
+static void joinTeamSpecCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
+{
+	std::vector<std::string> split = splitString(dataAsString, ' ');
+	player->joinTeam(player->toUtf8(split[0]), true);
 }
 
 static void leaveTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
@@ -276,6 +285,10 @@ static void getExtraUserMem(Player::Ptr player, const std::vector<uint8_t>&, con
 	}
 }
 
+static void extraMemAck(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
+	player->sendExtraMem();
+}
+
 static void registerExtraUserMemStart(Player::Ptr player, const std::vector<uint8_t>& data, const std::string&)
 {
 	if (data.size() == 8)
@@ -292,9 +305,28 @@ static void registerExtraUserMemEnd(Player::Ptr player, const std::vector<uint8_
 	player->endExtraMem();
 }
 
-static void chatLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
-	if (player->lobby != nullptr)
-		player->lobby->sendChat(player->name, player->toUtf8(dataAsString.substr(dataAsString.find(' ') + 1)));
+static void chatLobbyCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
+{
+	auto pos = dataAsString.find(' ');
+	if (pos == std::string::npos)
+		return;
+	std::string recipientName = player->toUtf8(dataAsString.substr(0, pos));
+	std::string message = dataAsString.substr(pos + 1);
+	if (!recipientName.empty() && recipientName[0] == '#')
+	{
+		// general lobby message
+		if (player->lobby != nullptr)
+			player->lobby->sendChat(player->name, player->toUtf8(message));
+	}
+	else
+	{
+		// private DM message
+		Player::Ptr recipient = player->server.getPlayer(recipientName);
+		if (recipient != nullptr)
+			recipient->send(S_LOBBY_DM, recipient->fromUtf8(player->name) + " " + message);
+		else
+			WARN_LOG(player->gameId, "Unknown private lobby DM recipient: %s", recipientName.c_str());
+	}
 }
 
 static void chatTeamCommand(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString) {
@@ -420,6 +452,40 @@ static void logData(Player::Ptr player, const std::vector<uint8_t>&, const std::
 static void nullCommand(Player::Ptr, const std::vector<uint8_t>&, const std::string&) {
 }
 
+static void launchRequestSingle(Player::Ptr player, const std::vector<uint8_t>&, const std::string&)
+{
+	// expects: <player count> { [*]<player name> <ip addr> }...
+	// * => host
+	if (player->team != nullptr)
+	{
+		sstream ss;
+		ss << player->team->members.size();
+		for (Player::Ptr p : player->team->members)
+		{
+			if (p == player->team->host)
+				ss << " *";
+			else
+				ss << ' ';
+			ss << player->fromUtf8(p->name) << ' ' << p->getIp();
+		}
+		player->send(S_LAUNCH_ACK, ss.str());
+	}
+}
+
+static void rjRequestRanking(Player::Ptr player, const std::vector<uint8_t>&, const std::string&)
+{
+	// TODO
+	// [RUNEJADE_RANKING 2 HANDLE_NAME MYNICK 0 30 SEGA_ID flycast1 0 40 9 DANJON_1 7 1 CHAT_1 7 1 ITEM_1 7 1 DANJON_2 7 1 CHAT_2 7 1 ITEM_2 7 1 DANJON_3 7 1 CHAT_3 7 1 ITEM_3 7 1 ]
+	// <data name> <identifier#> { <name> <value> <?> <max sz?> } ... <data item#> { <name> <?> <?> } ...
+	// expects: E5 <E6 msg count> <max items per msg>
+	//          E6 <number>...
+	//          E7
+	// sending all ones makes you a king
+	player->send(S_MULTI_DATA_START, "1 9");
+	player->send(S_MULTI_DATA_ITEM, "0 0 0 0 0 0 0 0 0");
+	player->send(S_MULTI_DATA_END);
+}
+
 using CommandHandler = void(*)(Player::Ptr, const std::vector<uint8_t>&, const std::string&);
 static std::unordered_map<CLIOpcode, CommandHandler> CommandHandlers = {
 		{ LOGIN, loginCommand },
@@ -431,7 +497,9 @@ static std::unordered_map<CLIOpcode, CommandHandler> CommandHandlers = {
 		{ GET_TEAMS, refreshTeamsCommand },
 		{ CREATE_TEAM, createTeamCommand },
 		{ JOIN_TEAM, joinTeamCommand },
+		{ JOIN_TEAM_SPECTATOR, joinTeamSpecCommand },
 		{ LEAVE_TEAM, leaveTeamCommand },
+		{ LEAVE_TEAM_SPECTATOR, leaveTeamCommand },
 		{ GET_EXTRAUSERMEM,  getExtraUserMem },
 		{ REGIST_EXTRAUSERMEM_START, registerExtraUserMemStart },
 		{ REGIST_EXTRAUSERMEM_TRANSFER, registerExtraUserMemData },
@@ -452,9 +520,11 @@ static std::unordered_map<CLIOpcode, CommandHandler> CommandHandlers = {
 		{ SEARCH, searchCommand },
 		{ SEND_LOG, logData },
 		{ SEND_CTCPMSG, sendCTCPMessage },
-		{ EXTRAUSERMEM_ACK, nullCommand },
+		{ EXTRAUSERMEM_ACK, extraMemAck },
 		{ LAUNCH_GAME_ACK, nullCommand },
 		{ SHAREDMEM_LOBBY, sharedMemLobbyCommand },
+		{ LAUNCH_REQUEST_SINGLE, launchRequestSingle },
+		{ RJ_REQUEST_RANKING, rjRequestRanking },
 };
 
 void PacketProcessor::handlePacket(Player::Ptr player, uint16_t opcode, const std::vector<uint8_t>& payload)

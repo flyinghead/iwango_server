@@ -6,8 +6,23 @@
 #include <fstream>
 #include <unordered_map>
 
+#ifndef LOCALSTATEDIR
+#define LOCALSTATEDIR "./"
+#endif
+
 static asio::io_context io_context;
 static std::unordered_map<std::string, std::string> Config;
+
+void LobbyConnection::send(const std::vector<uint8_t>& data)
+{
+	if (data.size() > sendBuffer.size() - sendIdx) {
+		ERROR_LOG(player->gameId, "Send buffer overflow: %zd > %zd", data.size(), sendBuffer.size() - sendIdx);
+		return;
+	}
+	memcpy(&sendBuffer[sendIdx], data.data(), data.size());
+	sendIdx += data.size();
+	send();
+}
 
 void LobbyConnection::close()
 {
@@ -46,12 +61,12 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 		return;
 	}
 	// Grab data and process if correct.
-	uint16_t opcode = *(uint16_t *)&recvBuffer[8];
-	std::vector<uint8_t> payload(&recvBuffer[10], &recvBuffer[len]);
+	uint16_t opcode = *(uint16_t *)&recvBuffer.bytes()[8];
+	std::vector<uint8_t> payload(&recvBuffer.bytes()[10], &recvBuffer.bytes()[len]);
 #ifndef NDEBUG
-	//uint16_t unk1 = *(uint16_t *)&recvBuffer[2];
-	uint16_t sequence = *(uint16_t *)&recvBuffer[4];
-	//uint16_t unk2 = *(uint16_t *)&recvBuffer[6];
+	//uint16_t unk1 = *(uint16_t *)&recvBuffer.bytes()[2];
+	uint16_t sequence = *(uint16_t *)&recvBuffer.bytes()[4];
+	//uint16_t unk2 = *(uint16_t *)&recvBuffer.bytes()[6];
 	std::string s((char *)&payload[0], payload.size());
 	if (strlen(s.c_str()) != s.length())
 	{
@@ -69,6 +84,7 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 	}
 #endif
 	player->receive(opcode, payload);
+	recvBuffer.consume(len);
 	receive();
 	timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(60));
 	timer.async_wait(std::bind(&LobbyConnection::onTimeOut, shared_from_this(), asio::placeholders::error));
@@ -271,6 +287,11 @@ int main(int argc, char *argv[])
 	powerSmashServer.setMotd(getConfig("PowerSmashMOTD", powerSmashServer.getMotd()));
 	LobbyAcceptor::Ptr powerSmashAcceptor = LobbyAcceptor::create(io_context, powerSmashServer);
 	powerSmashAcceptor->start();
+
+	LobbyServer runeJadeServer(GameId::RuneJade, getConfig("RuneJadeServerName", "DCNet"));
+	runeJadeServer.setMotd(getConfig("RuneJadeMOTD", runeJadeServer.getMotd()));
+	LobbyAcceptor::Ptr runeJadeAcceptor = LobbyAcceptor::create(io_context, runeJadeServer);
+	runeJadeAcceptor->start();
 
 	StatusUpdater statusUpdater(io_context);
 	statusUpdater.start();

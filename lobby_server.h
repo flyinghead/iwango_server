@@ -17,18 +17,11 @@ public:
 	}
 
 	void receive() {
-		recvBuffer.clear();	// FIXME do we have to handle more than 1 msg per buffer?
-		asio::async_read_until(socket, asio::dynamic_vector_buffer(recvBuffer), packetMatcher,
+		asio::async_read_until(socket, recvBuffer, packetMatcher,
 				std::bind(&LobbyConnection::onReceive, shared_from_this(), asio::placeholders::error, asio::placeholders::bytes_transferred));
 	}
 
-	void send(const std::vector<uint8_t>& data)
-	{
-		memcpy(&sendBuffer[sendIdx], data.data(), data.size());
-		sendIdx += data.size();
-		send();
-	}
-
+	void send(const std::vector<uint8_t>& data);
 	void close();
 
 private:
@@ -80,7 +73,7 @@ private:
 	asio::io_context& io_context;
 	asio::ip::tcp::socket socket;
 	asio::steady_timer timer;
-	std::vector<uint8_t> recvBuffer;
+	DynamicBuffer recvBuffer;
 	std::array<uint8_t, 8500> sendBuffer;
 	size_t sendIdx = 0;
 	bool sending = false;

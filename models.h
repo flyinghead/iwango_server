@@ -56,6 +56,10 @@ enum SRVOpcode : uint16_t
 	S_LOBBY_PLAYER_LIST_END = 0xD9,
 	S_LOBBY_PLAYER_LIST_ITEM = 0xDA,
 	S_EXT_MEM_READY = 0xE1,
+	S_MULTI_DATA_START = 0xE5,
+	S_MULTI_DATA_ITEM = 0xE6,
+	S_MULTI_DATA_END = 0xE7,
+	// E8, E9, EA multi data errors?
 };
 
 using sstream = std::stringstream;
@@ -144,10 +148,11 @@ public:
 	}
 
 	void createTeam(const std::string& name, unsigned capacity, const std::string& type);
-	void joinTeam(const std::string& name);
+	void joinTeam(const std::string& name, bool spectator);
 	void leaveTeam();
 
 	void getExtraMem(const std::string& playerName, int offset, int length);
+	void sendExtraMem();
 	void startExtraMem(int offset, int length);
 	void setExtraMem(int index, const uint8_t *data, int size);
 	void endExtraMem();
@@ -168,6 +173,7 @@ public:
 	std::vector<uint8_t> sharedMem;
 	Lobby::Ptr lobby;
 	std::shared_ptr<Team> team;
+	bool spectator = false;
 	GameId gameId;
 	LobbyServer& server;
 
@@ -182,6 +188,8 @@ private:
 	std::vector<uint8_t> extraUserMem;
 	int extraMemOffset = 0;
 	int extraMemEnd = 0;
+	int extraMemChunkNum = 0;
+	Player::Ptr extraMemPlayer;
 	std::string ipAddress;
 	std::array<uint8_t, 4> ipBytes;
 	friend super;
@@ -196,56 +204,8 @@ public:
 		for (auto& player : members)
 			player->send(S_TEAM_SHARED_MEM, player->fromUtf8(name) + " " + sharedMem);
 	}
-	bool addPlayer(Player::Ptr player)
-	{
-		if (members.size() == capacity)
-			return false;
-
-		members.push_back(player);
-
-		// Build player string
-		sstream ss;
-		ss << name;
-		for (auto& p : members)
-			ss << ' ' << p->name;
-
-		// Send packet to all members
-		for (auto& p : player->lobby->members)
-			p->send(S_TEAM_JOINED, p->fromUtf8(ss.str()));
-
-		return true;
-	}
-	bool removePlayer(Player::Ptr player)
-	{
-		auto it = std::find(members.begin(), members.end(), player);
-		if (it != members.end())
-		{
-			members.erase(it);
-
-			// Change host
-			if (host == player && !members.empty())
-				host = members[0];
-
-			// Send Packets
-			if (player->lobby != nullptr) {
-				for (auto& p : player->lobby->members)
-					p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
-			}
-			else {
-				for (auto& p : members)
-					p->send(S_TEAM_LEFT, p->fromUtf8(name + " " + player->name));
-			}
-
-			// Team deleted?
-			if (members.empty())
-				parent->deleteTeam(shared_from_this());
-			return true;
-		}
-		else {
-			WARN_LOG(player->gameId, "Player %s not found in team %s", player->name.c_str(), name.c_str());
-			return false;
-		}
-	}
+	bool addPlayer(Player::Ptr player, bool spectator);
+	bool removePlayer(Player::Ptr player);
 
 	void sendChat(const std::string& from, const std::string& message)
 	{
@@ -254,10 +214,7 @@ public:
 			player->send(S_TEAM_CHAT, player->fromUtf8(from + " " + message));
 	}
 
-	void sendGameServer(Player::Ptr p) {
-		for (auto& player : members)
-			player->send(S_GAME_SERVER, "172.20.0.1 9510");	// not implemented
-	}
+	void sendGameServer(Player::Ptr p);
 
 	void launchGame(Player::Ptr p)
 	{

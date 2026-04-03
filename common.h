@@ -20,6 +20,7 @@ enum class GameId
 	AeroDancingF,
 	PowerSmash,
 	YakyuuTeam,
+	RuneJade,
 };
 
 inline static GameId identifyGame(const std::string& gameId)
@@ -45,6 +46,8 @@ inline static GameId identifyGame(const std::string& gameId)
 		return GameId::PowerSmash;
 	if (gameId == "S00001S0000110060199")
 		return GameId::YakyuuTeam;
+	if (gameId == "T00006T0000610300101")
+		return GameId::RuneJade;
 	return GameId::Daytona;
 }
 

@@ -30,7 +30,8 @@ const char *getDCNetGameId(GameId gameId)
 		"culdcept",
 		"aerof",
 		"powersmash",
-		"yakyuunet"
+		"yakyuunet",
+		"runejade",
 	};
 	if (gameId == GameId::Unknown || (size_t)gameId >= std::size(gameIds))
 		return nullptr;
