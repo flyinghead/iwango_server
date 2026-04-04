@@ -13,6 +13,14 @@
 static asio::io_context io_context;
 static std::unordered_map<std::string, std::string> Config;
 
+void LobbyConnection::receive()
+{
+	timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(60));
+	timer.async_wait(std::bind(&LobbyConnection::onTimeOut, shared_from_this(), asio::placeholders::error));
+	asio::async_read_until(socket, recvBuffer, packetMatcher,
+			std::bind(&LobbyConnection::onReceive, shared_from_this(), asio::placeholders::error, asio::placeholders::bytes_transferred));
+}
+
 void LobbyConnection::send(const std::vector<uint8_t>& data)
 {
 	if (data.size() > sendBuffer.size() - sendIdx) {
@@ -86,8 +94,6 @@ void LobbyConnection::onReceive(const std::error_code& ec, size_t len)
 	player->receive(opcode, payload);
 	recvBuffer.consume(len);
 	receive();
-	timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(60));
-	timer.async_wait(std::bind(&LobbyConnection::onTimeOut, shared_from_this(), asio::placeholders::error));
 }
 
 void LobbyConnection::onSent(const std::error_code& ec, size_t len)

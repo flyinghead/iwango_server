@@ -20,7 +20,10 @@ public:
 		return socket;
 	}
 
-	void receive() {
+	void receive()
+	{
+		timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(60));
+		timer.async_wait(std::bind(&GateConnection::onTimeOut, shared_from_this(), asio::placeholders::error));
 		asio::async_read_until(socket, recvBuffer, packetMatcher,
 				std::bind(&GateConnection::onReceive, shared_from_this(), asio::placeholders::error, asio::placeholders::bytes_transferred));
 	}
@@ -34,7 +37,8 @@ public:
 
 private:
 	GateConnection(asio::io_context& io_context)
-		: io_context(io_context), socket(io_context) {
+		: io_context(io_context), socket(io_context), timer(io_context)
+	{
 	}
 
 	void send()
@@ -54,6 +58,7 @@ private:
 		{
 			if (ec != asio::error::eof && ec != asio::error::bad_descriptor)
 				ERROR_LOG(GameId::Unknown, "gate: onSent: %s", ec.message().c_str());
+			close();
 			return;
 		}
 		sending = false;
@@ -85,12 +90,13 @@ private:
 	{
 		if (ec || len < 2)
 		{
-			if (ec && ec != asio::error::eof && ec != asio::error::bad_descriptor)
+			if (ec && ec != asio::error::eof && ec != asio::error::bad_descriptor && ec != asio::error::operation_aborted)
 				ERROR_LOG(GameId::Unknown, "gate: onReceive: %s", ec.message().c_str());
 			else if (len != 0)
 				ERROR_LOG(GameId::Unknown, "gate: onReceive: small packet: %zd", len);
 			else
 				DEBUG_LOG(GameId::Unknown, "gate: Connection closed");
+			close();
 			return;
 		}
 		// Grab data and process if correct.
@@ -260,6 +266,26 @@ private:
 		}
 	}
 
+	void onTimeOut(const std::error_code& ec)
+	{
+		if (ec)
+			return;
+		if (socket.is_open())
+			try {
+				ERROR_LOG(GameId::Unknown, "gate: connection timeout with %s",
+						socket.remote_endpoint().address().to_string().c_str());
+			} catch (...) {}
+		close();
+	}
+
+	void close()
+	{
+		std::error_code ignore;
+		socket.shutdown(asio::socket_base::shutdown_both, ignore);
+		socket.close(ignore);
+		timer.cancel(ignore);
+	}
+
 	enum Errors {
 		ERROR1 = 0x3FC,
 		NAME_IN_USE1 = 0x3FD,
@@ -268,6 +294,7 @@ private:
 	};
 	asio::io_context& io_context;
 	asio::ip::tcp::socket socket;
+	asio::steady_timer timer;
 	DynamicBuffer recvBuffer;
 	std::array<uint8_t, 1024> sendBuffer;
 	size_t sendIdx = 0;

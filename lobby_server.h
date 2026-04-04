@@ -16,11 +16,7 @@ public:
 		this->player = player;
 	}
 
-	void receive() {
-		asio::async_read_until(socket, recvBuffer, packetMatcher,
-				std::bind(&LobbyConnection::onReceive, shared_from_this(), asio::placeholders::error, asio::placeholders::bytes_transferred));
-	}
-
+	void receive();
 	void send(const std::vector<uint8_t>& data);
 	void close();
 

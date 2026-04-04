@@ -472,17 +472,35 @@ static void launchRequestSingle(Player::Ptr player, const std::vector<uint8_t>&,
 	}
 }
 
-static void rjRequestRanking(Player::Ptr player, const std::vector<uint8_t>&, const std::string&)
+static void rjRequestRanking(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)
 {
-	// TODO
 	// [RUNEJADE_RANKING 2 HANDLE_NAME MYNICK 0 30 SEGA_ID flycast1 0 40 9 DANJON_1 7 1 CHAT_1 7 1 ITEM_1 7 1 DANJON_2 7 1 CHAT_2 7 1 ITEM_2 7 1 DANJON_3 7 1 CHAT_3 7 1 ITEM_3 7 1 ]
 	// <data name> <identifier#> { <name> <value> <?> <max sz?> } ... <data item#> { <name> <?> <?> } ...
 	// expects: E5 <E6 msg count> <max items per msg>
 	//          E6 <number>...
 	//          E7
+	// returned values should be [1-100], otherwise forced to 100
 	// sending all ones makes you a king
+	// Looks like the returned values are levels needed to reach higher status? not sure how it could depend on the player.
+	std::vector<std::string> split = splitString(dataAsString, ' ');
+	int count = atoi(split[10].c_str());
+	if (count < 1)
+		return;
+	const std::string& item1 = split[11];
+	if (item1.substr(0, 7) != "DANJON_")
+		return;
+	int level = atoi(item1.substr(7).c_str());
+	if (level < 1 || level > 16)
+		return;
 	player->send(S_MULTI_DATA_START, "1 9");
-	player->send(S_MULTI_DATA_ITEM, "0 0 0 0 0 0 0 0 0");
+	std::string s;
+	// scale linearly up to ~100
+	float unit = 100.f / 17.f;
+	for (int i = level; i < level + count / 3; i++)	{
+		std::string v = std::to_string((int)(i * unit)) + ' ';
+		s += v + v + v;
+	}
+	player->send(S_MULTI_DATA_ITEM, s);
 	player->send(S_MULTI_DATA_END);
 }
 
