@@ -1,6 +1,8 @@
 #include "lobby_server.h"
 #include "models.h"
 #include "common.h"
+#include "discord.h"
+#include <dcserver/status.hpp>
 #include <unordered_map>
 #include <sys/time.h>
 
@@ -96,6 +98,7 @@ static void loginCommand(Player::Ptr player, const std::vector<uint8_t>&, const 
 	   << ":" << tm->tm_min
 	   << ":" << tm->tm_sec;
 	player->send(S_LOGIN_OK, ss.str());
+	status::join(getDCNetGameId(player->gameId), player->getIp(), player->getPort(), player->name);
 }
 
 static void login2Command(Player::Ptr player, const std::vector<uint8_t>&, const std::string& dataAsString)

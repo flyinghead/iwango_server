@@ -80,6 +80,7 @@ Team::Ptr Lobby::createTeam(Player::Ptr creator, const std::string& name, unsign
 		playerNames.push_back(p->name);
 	}
 	discordGameCreated(creator->gameId, creator->name, name, playerNames);
+	status::createGame(getDCNetGameId(creator->gameId));
 
 	return team;
 }
@@ -91,6 +92,7 @@ void Lobby::deleteTeam(Team::Ptr team)
 	// Tell all members to remove team
 	for (auto& p : members)
 		p->send(S_TEAM_DELETED, p->fromUtf8(team->name));
+	status::deleteGame(getDCNetGameId(parent.getGameId()));
 	INFO_LOG(parent.getGameId(), "team %s deleted", team->name.c_str());
 }
 
@@ -132,6 +134,7 @@ Player::Player(LobbyConnection::Ptr connection, LobbyServer& server)
 	const asio::ip::address address = connection->getSocket().remote_endpoint().address();
 	ipAddress = address.to_string();
 	ipBytes = address.to_v4().to_bytes();
+	port = connection->getSocket().remote_endpoint().port();
 }
 
 void Player::login(const std::string& name)
@@ -156,6 +159,8 @@ void Player::disconnect(bool sendDCPacket)
 	// Tell client to d/c if actually still connected
 	if (sendDCPacket)
 		send(S_DO_DISCONNECT);
+
+	status::leave(getDCNetGameId(gameId), ipAddress, port, name);
 
 	// Remove player from everything
 	if (team) {
@@ -529,28 +534,5 @@ std::string LobbyServer::getGameName() const
 	case GameId::YakyuuTeam: return "HDR-0091";
 	case GameId::RuneJade: return "RUNEJADE";
 	default: assert(false); return "???";
-	}
-}
-
-void LobbyServer::updateStatus()
-{
-	static constexpr GameId games[] {
-			GameId::Daytona, GameId::AeroDancingI, GameId::AeroDancingF, GameId::Tetris,
-			GameId::GolfShiyouyo, GameId::HundredSwords, GameId::PowerSmash, GameId::CuldCept,
-			GameId::RuneJade
-	};
-	for (GameId gameId : games)
-	{
-		LobbyServer *server = getServer(gameId);
-		int playerCount = server->players.size();
-		int gameCount = 0;
-		for (Lobby::Ptr lobby : server->lobbies)
-			gameCount += lobby->teams.size();
-		statusUpdate(getDCNetGameId(gameId), playerCount, gameCount);
-	}
-	try {
-		statusCommit("iwango");
-	} catch (const std::exception& e) {
-		ERROR_LOG(GameId::Unknown, "statusCommit failed: %s", e.what());
 	}
 }

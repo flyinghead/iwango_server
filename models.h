@@ -119,6 +119,7 @@ public:
 	void login(const std::string& name);
 	std::string getIp();
 	std::array<uint8_t, 4> getIpBytes();
+	int getPort() const { return port; };
 	void disconnect(bool sendDCPacket = true);
 	void setSharedMem(const std::vector<uint8_t>& data);
 	std::vector<uint8_t> getSendDataPacket();
@@ -192,6 +193,7 @@ private:
 	Player::Ptr extraMemPlayer;
 	std::string ipAddress;
 	std::array<uint8_t, 4> ipBytes;
+	int port = 0;
 	friend super;
 };
 
@@ -331,8 +333,6 @@ public:
 				return server;
 		return nullptr;
 	}
-
-	static void updateStatus();
 
 private:
 	GameId gameId;

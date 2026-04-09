@@ -179,6 +179,7 @@ public:
 	}
 
 	void start() {
+		status::reset("iwango");
 		onTimer({});
 	}
 
@@ -186,8 +187,8 @@ public:
 	{
 		if (ec)
 			return;
-		LobbyServer::updateStatus();
-		timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(statusGetInterval()));
+		status::ping("iwango");
+		timer.expires_at(asio::chrono::steady_clock::now() + asio::chrono::seconds(status::pingInterval()));
 		timer.async_wait(std::bind(&StatusUpdater::onTimer, this, asio::placeholders::error));
 	}
 
